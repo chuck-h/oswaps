@@ -1,34 +1,57 @@
 #include <eosio/asset.hpp>
 #include <eosio/eosio.hpp>
 #include <eosio/crypto.hpp>
+#include <eosio/singleton.hpp>
 #include <algorithm>
 
 using namespace eosio;
 using std::string;
    /**
-    * The `oswaps' contract implements a token conversion service ("currency exchange") based on a
-    *   multilateral token pool. The contract uses a "single sided" liquidity investment model. These
-    *   fundamental functions are supported :
+    * The `oswaps` contract implements a token conversion service ("currency exchange") based on a
+    *   multilateral token pool using the "balancer" invariant. The contract uses a "single sided"
+    *   liquidity investment model in which balancer weights are adjusted during liquidity
+    *   changes. These fundamental functions are supported :
     *   - add liquidity, e.g. insert some Token A into the pool
     *   - withdraw liquidity, e.g. extract some Token A from the pool
     *   - convert, e.g. change token A to Token B, delivered to a recipient
+    * The initial `oswaps` implementation is a Proof of Concept and lacks some functions
+    *   including
+    *   - exchange fees
+    *   - liquidity metering
+    *   - multichain operation
     *
-    * The contract anticipates a future ability to operate across different Antelope chains
-    *   using a trustless IBC mechanism; therefore tokens are identified by a triplet
-    *   < chain, contract, symbol >
+    * Transfers into the oswaps contract proceed via two steps :
+    *   First, the originator submits transaction details in a "prep" action, which returns data
+    *     including a nonce, i.e. an ephemeral transaction code.
+    *   Second, the originator sends an ordinary token transfer action to the contract, with a memo
+    *     field containing the nonce; the action sent earlier is executed.
     *
-    * The contract supports a generic per-token parameter table. Parameters are expected to include
-    *   balancer weights, fee levels, liquidity metering limits, etc. (details TBD)
+    * The contract anticipates a future ability to operate across different chains, with
+    *   varying conventions for token identification. Therefore token identities are
+    *   recorded in a table and a numerical code from that table is used in action fields.
+    *   (Typically a redundant action field with the symbol string is also present,
+    *   to minimize errors in manually-entered transaction data.)
+    *   Initially the contract supports Antelope chains and registers tokens
+    *   referencing a 4-tuple < family, chain, contract, symbol > where family is
+    *   "antelope".
+    *
+    * The contract supports an asset table with one row for each recognized token.
+    *   The parameter set serves the Proof of Concept.
+    *   Future expansion TBD, may involve adding new fields to the asset table or
+    *   adding a supplementary table.
     *
     * Authorization model
-    * The contract account should be a "cold" multisig which is used once for uploading the contract
-    *   and once for specifying a manager account. It has no operational role after that. For
-    *   any token having transfer rights restricted to whitelisted accounts, the contract
+    * The contract account owner permission should be a "cold" multisig which is used once for
+    *   uploading the contract and once for specifying a manager account. It has no
+    *   operational role after that, however for test purposes the `reset` action is
+    *   implemented.
+    *   For any token having transfer rights restricted to whitelisted accounts, the contract
     *   account must be added to the token's whitelist.
     * The manager account will typically be under some sort type of governance control (e.g. DAO).
-    *   This account can freeze and unfreeze transaction processing on a per-token basis.
-    * By placing named authorizations in the generic parameter table, this facility may be used to
-    *   assign per-token management powers, but the details are TBD.    
+    *   This account can freeze and unfreeze transaction processing on a per-token basis. The
+    *   manager account may transfer authority to a replacement manager account.
+    * By placing named authorizations in the asset table, this facility may be used to
+    *   assign per-token management powers, but the details are TBD and beyond the PoC.    
     */
 
 CONTRACT oswaps : public contract {
@@ -41,59 +64,83 @@ CONTRACT oswaps : public contract {
       ACTION reset();
 
       /**
-          * The one-time `init` action executed by the tokensmaster contract account records
-          *  the manager account
+          * The one-time `init` action executed by the oswaps contract account records
+          *  the manager account, nonce validity time, and chain identifier
           *
           * @param manager - an account empowered to execute freeze and setparameter actions
+          * @param nonce_life_msec - the time validity window for a "prep" action nonce
+          * @param chain - a well-known name or hex-encoded chain_id
       */
-      ACTION init(name manager);
+      ACTION init(name manager, uint64_t nonce_life_msec, string chain);
       
       /**
           * The `freeze` action executed by the manager or other authorized actor suspends
           * transactions in a specified token
           *
           * @param actor - an account empowered to execute the freeze action
-          * @param chain - the "home chain" of a token
-          * @param extended-symbol - the contract and symbol of the affected token
+          * @param token_id - a numerical token identifier in the asset table
+          * @param symbol - the symbol of the affected token
       */
-      ACTION freeze(name actor, string chain, extended_symbol);
+      ACTION freeze(name actor, uint64_t token_id, string symbol);
 
       /**
           * The `unfreeze` action executed by the manager or other authorized actor enables
           * transactions in a specified token
           *
-          * @param actor - an account empowered to execute the unfreeze action
-          * @param chain - the "home chain" of a token
-          * @param extended-symbol - the contract and symbol of the affected token
+          * @param actor - an account empowered to execute the freeze action
+          * @param token_id - a numerical token identifier in the asset table
+          * @param symbol - the symbol of the affected token
       */
-      ACTION unfreeze(name actor, string chain, extended_symbol);
+      ACTION unfreeze(name actor, uint64_t token_id, string symbol);
       
 
       /**
-          * The `setparameter` action sets a specified parameter value for a specified token
+          * The `createasseta` creates an entry in the asset table for an
+          *   antelope family token. If a table entry exists, it is overwritten
+          *   TBD: how to record IBC wrapped token contracts
           *
           * @param actor - an account empowered to set the specified parameter
-          * @param chain - the "home chain" of a token
-          * @param extended-symbol - the contract and symbol of the affected token
-          * @param parameter - the parameter name
-          * @param value - the new parameter value
+          * @param chain - the "home chain" of a token, expressed as a common name
+          *                  followed by ';' and a hex chain id
+          * @param contract - the contract name
+          * @param symbol - the symbol of the affected token
+          * @param meta - metadata (JSON) 
       */
-      ACTION setparameter(name actor, string chain, extended_symbol, name parameter, string value);
+      ACTION createasseta(name actor, string chain, name contract, name symbol, string meta);
 
       /**
-          * The `changeliq` action adds/removes liquidity to/from a token pool
-          * Token transfers occur through a rate-throttling queue which may introduce delays
+          * The `withdrawprep` action withdraws liquidity while simultaneously
+          *   adjusting weight-fractions in the balancer invariant formula
+          * [future: Token transfers occur through a rate-throttling queue which may
+          *    introduce delays]
           * 
-          * @param owner - the account sourcing or receiving the tokens
-          * @param chain - the "home chain" of the asset
-          * @param amount - the (signed) amount of asset to add to pool;
-          *    negative amount represents withdrawal.
+          * @param account - the account receiving the tokens
+          * @param token_id - a numerical token identifier in the asset table
+          * @param amount - the amount of asset (quantity, symbol) to withdraw from pool;
+          * @param weight_fraction - the new weight fraction (or zero)
       */
-      ACTION changeliq(name owner, string chain, extended_asset amount);
-      
+      ACTION withdrawprep(name account, uint64_t token_id, string amount, float weight_frac);
+
       /**
-          * The `convert` action takes a quantity of tokens from the sender and delivers a
-          *   corresponding quantity of a different token to the recipient.
+          * The `addliqprep` action adds liquidity while simultaneously
+          *   adjusting weight-fractions in the balancer invariant formula
+          * [future: Token transfers occur through a rate-throttling queue which may
+          *    introduce delays]
+          * 
+          * @param account - the account sourcing the tokens
+          * @param token_id - a numerical token identifier in the asset table
+          * @param amount - the amount of asset (quantity, symbol) to add to pool;
+          * @param weight_fraction - the new weight fraction (or zero)
+          *
+          * @result - a nonce identifying this transaction
+      */
+      [[eosio::action]] uint64_t addliqprep(name account, uint64_t token_id,
+                                            string amount, float weight_frac);
+
+      /**
+          * The `exchangeprep` action is a function describing a conversion
+          *   ("currency exchange") transaction, taking a quantity of tokens from the sender
+          *   and delivering a corresponding quantity of a different token to the recipient. 
           * The conversion ratio ("exchange rate") is computed according to a multilateral
           *   "balancer" type algorithm with an invariant V
           *     V = B1**W1 * B2**W2 * ... * Bn**Wn
@@ -103,117 +150,103 @@ CONTRACT oswaps : public contract {
           * In the action call, both incoming and outgoing amounts are specified, but
           *   only one of them is the "exact" or "controlling" parameter. The other
           *   amount specifies a limit; the action will fail if the computed exchange value
-          *   is beyond the limit. The sign of the incoming amount encodes the choice
-          *   above : a positive incoming amount parameter indicates that the incoming
-          *   amount is exact and requires that the computed outgoing value must be no less than
-          *   the outgoing amount parameter. A negative incoming amount indicates that the
-          *   outgoing amount is exact and the computed incoming value must be no more than
-          *   the absolute value of the incoming amount parameter.
+          *   is beyond the limit. The `mods` parameter encodes the choice of exact field.
+          *   If the incoming amount is exact, the computed outgoing value must be no less than
+          *   the outgoing amount parameter. If the outgoing amount is exact, the computed
+          *   incoming value must be no more than the value of the incoming amount parameter.
+          * 
           * 
           * @param sender - the account sourcing tokens to the transaction
-          * @param in_chain - the "home chain" of the incoming asset
-          * @param in_amount - the incoming amount (contract, symbol, and quantity) 
+          * @param in_token_id - a numerical token identifierfor the incoming asset
+          * @param in_amount - the incoming amount (quantity, symbol) 
           * @param recipient - the account receiving tokens from the transaction
-          * @param out_chain - the "home chain" of the outgoing asset
-          * @param out_amount - the outgoing amount (contract, symbol, and quantity)
-          * @param memo - memo string
-      */
-      ACTION convert(name sender, string in_chain, extended_asset in_amount,
-                      name recipient, string out_chain, extended_asset out_amount,
-                      string memo);
-      
-      /**
-          * The `dryconvert` action takes the same parameters as `convert` but does
-          *   not transfer tokens or change any table values. It performs a "dry run"
-          *   conversion computation and returns fee information and the computed
-          *   quantity for the non-controlling token (this can be either the incoming
-          *   or outgoing token, depending on the sign of the incoming amount parameter).
-          * 
-          * @param sender - the account sourcing tokens to the transaction
-          * @param in_chain - the "home chain" of the incoming asset
-          * @param in_amount - the incoming amount (contract, symbol, and quantity) 
-          * @param recipient - the account receiving tokens from the transaction
-          * @param out_chain - the "home chain" of the outgoing asset
-          * @param out_amount - the outgoing amount (contract, symbol, and quantity)
-          * @param memo - memo string
+          * @param out_token_id - a numerical token identifier for the outgoing asset
+          * @param out_amount - the outgoing amount (quantity, symbol)
+          * @param memo
           *
-          * @result a vector of 3 elements
-          *     rv[0] - the quantity of incoming tokens assessed as fee
-          *     rv[1] - the quantity of outgoing tokens assessed as fee
-          *     rv[2] - the computed quantity field of the non-controlling asset
+          * @result a vector of 4 uint64_t elements
+          *     rv[0] - a nonce identifying this transaction
+          *     rv[1] - the quantity of incoming tokens assessed as fee
+          *     rv[2] - the quantity of outgoing tokens assessed as fee
+          *     rv[3] - the computed quantity field of the non-controlling asset
+          *
       */
-      [[eosio::action]] std::vector<int64_t> dryconvert(
-           name sender, string in_chain, extended_asset in_amount,
-           name recipient, string out_chain, extended_asset out_amount,
+      [[eosio::action]] std::vector<int64_t> exchangeprep(
+           name sender, uint64_t in_token_id, string in_amount,
+           name recipient, uint64_t out_token_id, string out_amount,
            string memo);
+
       
   private:
 
-      // tokens in pool
-      TABLE token {  // single table, scoped by contract account name
+      // config
+      TABLE config { // singleton, scoped by contract account name
+        name manager;
+        uint64_t nonce_life_msec;
+        uint64_t chain_id;
+      };
+
+      // types of tokens
+      TABLE asset { // single table, scoped by contract account name
         uint64_t token_id;
-        string token_chain;
-        extended_asset active_balance;
-        uint64_t total_quantity; // including amounts in liquidity-add queue
-        double in_rate;
-        double out_rate;
-        time_point rates_updated;
+        name family;
+        string chain;
+        uint64_t chain_code;
+        string contract;
+        uint64_t contract_code;
+        string symbol;
+        bool active;
+        string metadata;
+        float weight;
         
         uint64_t primary_key() const { return token_id; }
-        uint64_t by_sym_code() const { return balance.symbol.code().raw(); }
+        uint64_t by_family() const { return family.value; }
+        uint64_t by_chain_code() const { return chain_code; }
       };
-      
-      // liquidity provider balances     
-      TABLE balance { // single table, scoped by contract account name
-        uint64_t id; // unique to <owner, token> pair
-        name owner;
-        uint64_t token_id;
-        int64_t queued;
-        int64_t pool_contrib;
-        double cred;
-        time_point cred_updated;
+     
+     // prepped withdrawals
+     TABLE wdprep { // single table, scoped by contract account name
+       uint64_t nonce;
+       time_point expires;
+       name account;
+       uint64_t token_id;
+       string amount;
+       float weight_frac;
+       
+       uint64_t primary_key() const { return expires.elapsed._count; }
+       uint64_t by_nonce() const { return nonce; }
+     };
 
-        uint64_t primary_key() const { return id; }
-        uint64_t by_owner() const { return owner.value(); }
-        uint64_t by_token() const { return token_id; }
-      };
-      
-      // parameters
-      TABLE parameter { // scoped by token index
-        name param_name;
-        string param_val;
-        double param_float;
-        
-        uint64_t primary_key() const { return param_name.value(); }        
-      };
-      
-      // chains
-      TABLE chain { // single table, scoped by contract account name
-        uint64_t hex_name;
-        string common_name;
-        
-        uint64_t primary_key() const { return hex_name; }
-        uint128_t by_common_name() const {
-          uint128_t rv = 0;
-          memcpy(&rv, common_name.c_str(), std::min(16, common_name.size()));
-          return rv;
-        }
-      };
+     // prepped exchanges
+     TABLE exprep { // single table, scoped by contract account name
+       uint64_t nonce;
+       time_point expires;
+       name sender;
+       uint64_t in_token_id;
+       string in_amount;
+       name recipient;
+       uint64_t out_token_id;
+       string out_amount;
+       string memo;
+       
+       uint64_t primary_key() const { return expires.elapsed._count; }
+       uint64_t by_nonce() const { return nonce; }
+     };
+       
+      typedef eosio::singleton< "configs"_n, config > configs;
+      typedef eosio::multi_index< "configs"_n, config >  dump_for_config;
+      typedef eosio::multi_index<"assets"_n, asset, indexed_by
+               < "byfamily"_n,
+                 const_mem_fun<asset, uint64_t, &asset::by_family > >
+               > assets;
+      typedef eosio::multi_index<"wdpreps"_n, wdprep, indexed_by
+               < "bynonce"_n,
+                 const_mem_fun<wdprep, uint64_t, &wdprep::by_nonce > >
+               > wdpreps;
+      typedef eosio::multi_index<"expreps"_n, exprep, indexed_by
+               < "bynonce"_n,
+                 const_mem_fun<exprep, uint64_t, &exprep::by_nonce > >
+               > expreps;
+};
 
-      typedef eosio::multi_index<"balances"_n, balance, indexed_by
-               < "by_owner"_n,
-                 const_mem_fun<balance, uint64_t, &balance::by_owner > >,
-               < "by_token"_n,
-                 const_mem_fun<balance, uint64_t, &balance::by_token > >
-               > balances;
-      typedef eosio::multi_index<"tokens"_n, token, indexed_by
-               < "by_sym_code"_n,
-                 const_mem_fun<token, uint64_t, &token::by_sym_code > >
-               > tokens;
-      typedef eosio::multi_index<"params"_n, parameter > params;
-      typedef eosio::multi_index<"chains"_n, chain, indexed_by
-               < "by_common_name"_n,
-                 const_mem_fun<chain, uint128_t, &chain::by_common_name > >
-               > chains;
 
- 
