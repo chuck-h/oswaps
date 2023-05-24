@@ -106,10 +106,10 @@ CONTRACT oswaps : public contract {
           * @param symbol - the symbol of the affected token
           * @param meta - metadata (JSON) 
       */
-      ACTION createasseta(name actor, string chain, name contract, name symbol, string meta);
+      ACTION createasseta(name actor, string chain, name contract, symbol_code symbol, string meta);
 
       /**
-          * The `withdrawprep` action withdraws liquidity while simultaneously
+          * The `withdraw` action withdraws liquidity while simultaneously
           *   adjusting weight-fractions in the balancer invariant formula
           * [future: Token transfers occur through a rate-throttling queue which may
           *    introduce delays]
@@ -119,7 +119,7 @@ CONTRACT oswaps : public contract {
           * @param amount - the amount of asset (quantity, symbol) to withdraw from pool;
           * @param weight_fraction - the new weight fraction (or zero)
       */
-      ACTION withdrawprep(name account, uint64_t token_id, string amount, float weight_frac);
+      ACTION withdraw(name account, uint64_t token_id, string amount, float weight_frac);
 
       /**
           * The `addliqprep` action adds liquidity while simultaneously
@@ -162,6 +162,7 @@ CONTRACT oswaps : public contract {
           * @param recipient - the account receiving tokens from the transaction
           * @param out_token_id - a numerical token identifier for the outgoing asset
           * @param out_amount - the outgoing amount (quantity, symbol)
+          * @param mods - a simple json object
           * @param memo
           *
           * @result a vector of 4 uint64_t elements
@@ -174,7 +175,10 @@ CONTRACT oswaps : public contract {
       [[eosio::action]] std::vector<int64_t> exchangeprep(
            name sender, uint64_t in_token_id, string in_amount,
            name recipient, uint64_t out_token_id, string out_amount,
-           string memo);
+           string mods, string memo);
+
+      [[eosio::on_notify("*::transfer")]]
+      void ontransfer(name from, name to, eosio::asset quantity, string memo);
 
       
   private:
@@ -183,15 +187,15 @@ CONTRACT oswaps : public contract {
       TABLE config { // singleton, scoped by contract account name
         name manager;
         uint64_t nonce_life_msec;
-        uint64_t chain_id;
-      };
+        checksum256 chain_id;
+      } config_row;
 
       // types of tokens
       TABLE asset { // single table, scoped by contract account name
         uint64_t token_id;
         name family;
         string chain;
-        uint64_t chain_code;
+        checksum256 chain_code;
         string contract;
         uint64_t contract_code;
         string symbol;
@@ -201,11 +205,10 @@ CONTRACT oswaps : public contract {
         
         uint64_t primary_key() const { return token_id; }
         uint64_t by_family() const { return family.value; }
-        uint64_t by_chain_code() const { return chain_code; }
       };
      
-     // prepped withdrawals
-     TABLE wdprep { // single table, scoped by contract account name
+     // prepped liquidity additions
+     TABLE adprep { // single table, scoped by contract account name
        uint64_t nonce;
        time_point expires;
        name account;
@@ -227,6 +230,7 @@ CONTRACT oswaps : public contract {
        name recipient;
        uint64_t out_token_id;
        string out_amount;
+       string mods;
        string memo;
        
        uint64_t primary_key() const { return expires.elapsed._count; }
@@ -239,10 +243,10 @@ CONTRACT oswaps : public contract {
                < "byfamily"_n,
                  const_mem_fun<asset, uint64_t, &asset::by_family > >
                > assets;
-      typedef eosio::multi_index<"wdpreps"_n, wdprep, indexed_by
+      typedef eosio::multi_index<"wdpreps"_n, adprep, indexed_by
                < "bynonce"_n,
-                 const_mem_fun<wdprep, uint64_t, &wdprep::by_nonce > >
-               > wdpreps;
+                 const_mem_fun<adprep, uint64_t, &adprep::by_nonce > >
+               > adpreps;
       typedef eosio::multi_index<"expreps"_n, exprep, indexed_by
                < "bynonce"_n,
                  const_mem_fun<exprep, uint64_t, &exprep::by_nonce > >
