@@ -40,10 +40,16 @@ npm install
 
 ```
 get DUNES from https://github.com/AntelopeIO/DUNES and follow install process in README
-upgrade nodejs https://docs.npmjs.com/downloading-and-installing-node-js-and-npm
+upgrade nodejs version in the DUNES container https://docs.npmjs.com/downloading-and-installing-node-js-and-npm
 dune --start mynode
 dune --bootstrap-system
 dune --create-account owner eosio EOS6MRyAjQq8ud7hVNYcfnVPJqcVpscN5So8BhtHuGYqET5GDW5CV 5KQwrPbwdL6PhXujxW37FSSQZ1JiwsST4cqQzDeyXtP79zkvFD3
+```
+You may want to export this "fresh" test node container for reimport as a clean test environment
+```
+dune --export-node mynode <path>
+...
+dune --import-node <path> mynode
 ```
 
 When using the `ops.js` test script (see below) in the DUNES container, use this convention
