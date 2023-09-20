@@ -148,6 +148,7 @@ const accountsMetadata = (network) => {
       fifthuser: account('seedsuseryyy', '10000000.0000 SEEDS'),
       sixthuser: account('seedsuserzzz', '5000.0000 SEEDS'),
       token: token('token.seeds', owner, '1500000000.0000 SEEDS'),
+      oswaps: contract('oswapper', 'oswaps')
     }
   } else if (network == networks.telosMainnet) {
     return {
@@ -340,7 +341,7 @@ const sendTransaction = async (actions) => {
 
 module.exports = {
   keyProvider, httpEndpoint,
-  eos, getEOSWithEndpoint, encodeName, decodeName, getBalance, getBalanceFloat, getTableRows, initContracts,
+  eos, getEOSWithEndpoint, getBalance, getBalanceFloat, getTableRows, initContracts,
   accounts, names, ownerPublicKey, activePublicKey, apiPublicKey, permissions, sha256, isLocal, ramdom64ByteHexString, createKeypair,
   testnetUserPubkey, getTelosBalance, fromHexString, allContractNames, allContracts, sleep, asset, isTestnet,
   sendTransaction

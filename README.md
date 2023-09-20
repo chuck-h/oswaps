@@ -38,9 +38,10 @@ npm install
 
 ### Start local test network with DUNES
 
+get DUNES from `https://github.com/AntelopeIO/DUNES` and follow install process in README
+
+Upgrade nodejs version in the DUNES container `https://docs.npmjs.com/downloading-and-installing-node-js-and-npm`. (The js test scripts need a newer version of nodejs than is shipped with the standard DUNES container.)
 ```
-get DUNES from https://github.com/AntelopeIO/DUNES and follow install process in README
-upgrade nodejs version in the DUNES container https://docs.npmjs.com/downloading-and-installing-node-js-and-npm
 dune --start mynode
 dune --bootstrap-system
 dune --create-account owner eosio EOS6MRyAjQq8ud7hVNYcfnVPJqcVpscN5So8BhtHuGYqET5GDW5CV 5KQwrPbwdL6PhXujxW37FSSQZ1JiwsST4cqQzDeyXtP79zkvFD3

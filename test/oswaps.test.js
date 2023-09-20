@@ -53,7 +53,7 @@ describe('oswaps', async assert => {
     eos.contract(oswaps),
     eos.contract(token)
   ]).then(([oswaps, token]) => ({
-    rainbows, token
+    oswaps, token
   }))
 
   const starttime = new Date()
