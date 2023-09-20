@@ -191,7 +191,7 @@ CONTRACT oswaps : public contract {
       } config_row;
 
       // types of tokens
-      TABLE asset { // single table, scoped by contract account name
+      TABLE assettype { // single table, scoped by contract account name
         uint64_t token_id;
         name family;
         string chain;
@@ -239,9 +239,9 @@ CONTRACT oswaps : public contract {
        
       typedef eosio::singleton< "configs"_n, config > configs;
       typedef eosio::multi_index< "configs"_n, config >  dump_for_config;
-      typedef eosio::multi_index<"assets"_n, asset, indexed_by
+      typedef eosio::multi_index<"assets"_n, assettype, indexed_by
                < "byfamily"_n,
-                 const_mem_fun<asset, uint64_t, &asset::by_family > >
+                 const_mem_fun<assettype, uint64_t, &assettype::by_family > >
                > assets;
       typedef eosio::multi_index<"wdpreps"_n, adprep, indexed_by
                < "bynonce"_n,

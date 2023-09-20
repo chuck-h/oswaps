@@ -148,6 +148,7 @@ const accountsMetadata = (network) => {
       fifthuser: account('seedsuseryyy', '10000000.0000 SEEDS'),
       sixthuser: account('seedsuserzzz', '5000.0000 SEEDS'),
       token: token('token.seeds', owner, '1500000000.0000 SEEDS'),
+      testtoken: token('token.seeds', owner, '1500000000.0000 TESTS'),
       oswaps: contract('oswapper', 'oswaps')
     }
   } else if (network == networks.telosMainnet) {

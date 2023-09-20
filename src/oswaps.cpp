@@ -14,6 +14,8 @@ void oswaps::reset() {
   while (itr != tbl.end()) {
     itr = tbl.erase(itr);
   }
+  configs configset(get_self(), get_self().value);
+  if(configset.exists()) { configset.remove(); }
   // clear prep tables
 }
 
