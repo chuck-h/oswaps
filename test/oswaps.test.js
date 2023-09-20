@@ -117,6 +117,38 @@ describe('oswaps', async assert => {
     
   })
 
+  console.log('add liquidity 1 - prep')
+  // TBD this expiration computation doesn't make sense, but works.
+  const exptimestamp = (new Date(500*Math.trunc(Date.now()/500) + 20500)).toISOString().slice(0,-1);
+  await contracts.oswaps.addliqprep( firstuser, 1, "10.0000 SEEDS", 1.00, { authorization: `${firstuser}@active` })
+
+  assert({
+    given: 'addliqprep',
+    should: 'create table entry',
+    actual: (await getTableRows({
+      code: oswaps,
+      scope: oswaps,
+      table: 'adpreps',
+      json: true
+    })),
+    expected: { rows: [ { nonce: 123, expires: exptimestamp, account: 'seedsuseraaa', token_id: 1, amount: '10.0000 SEEDS', weight_frac: '1.00000000000000000' } ], more: false, next_key: '' }
+  })
+
+  console.log('add liquidity 2 - transfer')
+
+  await contracts.token.transfer( firstuser, oswaps, "10.0000 SEEDS", "123", { authorization: `${firstuser}@active` })
+
+  assert({
+    given: 'send tokens',
+    should: 'add liquidity',
+    actual: (await getTableRows({
+      code: token,
+      scope: oswaps,
+      table: 'accounts',
+      json: true
+    })),
+    expected: { rows: [ { balance: '10.0000 SEEDS' } ], more: false, next_key: '' }
+  })
 
 })
 

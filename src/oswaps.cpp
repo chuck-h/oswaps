@@ -7,12 +7,38 @@ const checksum256 telos_chain_id = checksum256::make_from_word_sequence<uint64_t
   0xbe0e1284a2f59699u,
   0x054a018f743b1d11u );
 
+uint64_t amount_from(symbol sym, string qty) { 
+  int sp = qty.find(' ');
+  check(sym.code().to_string() == qty.substr(sp+1), "mismatched symbol");
+  size_t dp;
+  uint64_t rv = std::stol(qty, &dp)*pow(10,sym.precision());
+  if(qty.at(dp)=='.') {
+    uint64_t f = std::stol(qty.substr(dp+1));
+    int decimals = sp-dp-1;
+    check(decimals <= sym.precision(), "too many decimals");
+    for(int i=decimals; i<sym.precision(); ++i) {
+      f *= 10;
+    }
+    rv += f;
+  }
+  return rv;
+}
+
 void oswaps::reset() {
   require_auth2(get_self().value, "owner"_n.value);
-  assets tbl(get_self(), get_self().value);
-  auto itr = tbl.begin();
-  while (itr != tbl.end()) {
-    itr = tbl.erase(itr);
+  {
+    assets tbl(get_self(), get_self().value);
+    auto itr = tbl.begin();
+    while (itr != tbl.end()) {
+      itr = tbl.erase(itr);
+    }
+  }
+  {
+    adpreps tbl(get_self(), get_self().value);
+    auto itr = tbl.begin();
+    while (itr != tbl.end()) {
+      itr = tbl.erase(itr);
+    }
   }
   configs configset(get_self(), get_self().value);
   if(configset.exists()) { configset.remove(); }
@@ -74,7 +100,22 @@ void oswaps::withdraw(name account, uint64_t token_id, string amount, float weig
 
 uint64_t oswaps::addliqprep(name account, uint64_t token_id,
                             string amount, float weight_frac) {
-  return 123;
+  configs configset(get_self(), get_self().value);
+  auto config_entry = configset.get();
+  adpreps adpreptable(get_self(), get_self().value);
+  adprep ap;
+  ap.nonce = 123; // TBD use pseudorandom or nonrepeat algo
+  ap.expires = time_point(microseconds(
+    current_time_point().time_since_epoch().count()
+    + 1000*config_entry.nonce_life_msec));
+  ap.account = account;
+  ap.token_id = token_id;
+  ap.amount = amount;
+  ap.weight_frac = weight_frac;
+  adpreptable.emplace(account, [&]( auto& s ) {
+    s = ap;
+  });
+  return ap.nonce;
 }
 
 std::vector<int64_t> oswaps::exchangeprep(
@@ -93,6 +134,7 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
     if (from == get_self()) return;
     check(to == get_self(), "This transfer is not for oswaps");
     check(quantity.amount >= 0, "transfer quantity must be positive");
+    name tkcontract = get_first_receiver();
     // look up memo field in adprep and exprep tables
     uint64_t memo_nonce;
     memo_nonce = std::stol(memo, nullptr, 0); // could throw on bad memo
@@ -100,8 +142,14 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
     adpreps adpreptable(get_self(), get_self().value);
     auto adidx = adpreptable.get_index<"bynonce"_n>();
     auto itr = adidx.find( memo_nonce );
-    if (itr == adidx.end()) {
-      // do liquidity add
+    if (itr != adidx.end()) {
+      // accept liquidity addition if valid
+      assets assettable(get_self(), get_self().value);
+      auto a = assettable.require_find(itr->token_id, "unrecog token id");
+      // TODO verify chain & family
+      check(a->contract == tkcontract.to_string(), "mismatched contract");
+      uint64_t amt = amount_from(quantity.symbol, itr->amount);
+      check(amt == quantity.amount, "transfer qty mismatched to prep");
     } else {
       expreps expreptable(get_self(), get_self().value);
       auto exidx = expreptable.get_index<"bynonce"_n>();

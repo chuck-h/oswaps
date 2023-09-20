@@ -243,7 +243,7 @@ CONTRACT oswaps : public contract {
                < "byfamily"_n,
                  const_mem_fun<assettype, uint64_t, &assettype::by_family > >
                > assets;
-      typedef eosio::multi_index<"wdpreps"_n, adprep, indexed_by
+      typedef eosio::multi_index<"adpreps"_n, adprep, indexed_by
                < "bynonce"_n,
                  const_mem_fun<adprep, uint64_t, &adprep::by_nonce > >
                > adpreps;
