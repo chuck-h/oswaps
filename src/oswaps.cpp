@@ -96,21 +96,32 @@ void oswaps::createasseta(name actor, string chain, name contract, symbol_code s
 }
 
 void oswaps::withdraw(name account, uint64_t token_id, string amount, float weight_frac) {
+  configs configset(get_self(), get_self().value);
+  check(configset.exists(), "not configured.");
+  auto cfg = configset.get();
+  require_auth(cfg.manager);
+  assets assettable(get_self(), get_self().value);
+  auto a = assettable.require_find(token_id, "unrecog token id");
+  // TODO verify chain, family, and contract
+  // look up token precision from stat table of contract
+  // update weight fractions
+  // launch inline transfer action  
 }
 
-uint64_t oswaps::addliqprep(name account, uint64_t token_id,
+uint32_t oswaps::addliqprep(name account, uint64_t token_id,
                             string amount, float weight_frac) {
   configs configset(get_self(), get_self().value);
   auto config_entry = configset.get();
   adpreps adpreptable(get_self(), get_self().value);
   adprep ap;
-  ap.nonce = 123; // TBD use pseudorandom or nonrepeat algo
+  ap.nonce = 123; // TODO use uint32 pseudorandom or nonrepeat algo
   ap.expires = time_point(microseconds(
     current_time_point().time_since_epoch().count()
     + 1000*config_entry.nonce_life_msec));
   ap.account = account;
   ap.token_id = token_id;
   ap.amount = amount;
+  // TODO handle weight_frac==0 => keep ratio
   ap.weight_frac = weight_frac;
   adpreptable.emplace(account, [&]( auto& s ) {
     s = ap;

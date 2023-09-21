@@ -134,7 +134,7 @@ CONTRACT oswaps : public contract {
           *
           * @result - a nonce identifying this transaction
       */
-      [[eosio::action]] uint64_t addliqprep(name account, uint64_t token_id,
+      [[eosio::action]] uint32_t addliqprep(name account, uint64_t token_id,
                                             string amount, float weight_frac);
 
       /**
