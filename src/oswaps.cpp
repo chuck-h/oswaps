@@ -62,6 +62,9 @@ void oswaps::init(name manager, uint64_t nonce_life_msec, string chain) {
   cfg.chain_id = chain_code;
   cfg.manager = manager;
   cfg.nonce_life_msec = nonce_life_msec;
+  if (!reconfig) {
+    cfg.last_nonce = 1111;
+  }
   configset.set(cfg, get_self());
 }
 
@@ -133,6 +136,8 @@ uint32_t oswaps::addliqprep(name account, uint64_t token_id,
                             string amount, float weight) {
   configs configset(get_self(), get_self().value);
   auto cfg = configset.get();
+  cfg.last_nonce += 1;
+  configset.set(cfg, get_self());
   assets assettable(get_self(), get_self().value);
   auto a = assettable.require_find(token_id, "unrecog token id");
   // TODO verify chain & family
@@ -153,7 +158,7 @@ uint32_t oswaps::addliqprep(name account, uint64_t token_id,
   }
   adpreps adpreptable(get_self(), get_self().value);
   adprep ap;
-  ap.nonce = 123; // TODO use uint32 pseudorandom or nonrepeat algo
+  ap.nonce = cfg.last_nonce;
   ap.expires = time_point(microseconds(
     current_time_point().time_since_epoch().count()
     + 1000*cfg.nonce_life_msec));

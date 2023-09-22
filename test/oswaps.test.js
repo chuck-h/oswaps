@@ -106,7 +106,7 @@ const empty = async( account, tokenaccount) => {
       table: 'configs',
       json: true
     }),
-    expected: { rows: [ { manager: 'seedsuseraaa', nonce_life_msec: 10000, chain_id: '4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11' } ], more: false, next_key: '' }
+    expected: { rows: [ { manager: 'seedsuseraaa', nonce_life_msec: 10000, chain_id: '4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11', last_nonce: 1111 } ], more: false, next_key: '' }
   })
 
   console.log('reconfigure')
@@ -121,7 +121,8 @@ const empty = async( account, tokenaccount) => {
       table: 'configs',
       json: true
     }),
-    expected: { rows: [ { manager: 'seedsuserbbb', nonce_life_msec: 20000, chain_id: '4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11' } ], more: false, next_key: '' }
+    expected: { rows: [ { manager: 'seedsuserbbb', nonce_life_msec: 20000, chain_id: '4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11', last_nonce: 1111 } ], more: false, next_key: '' }
+    
   })
 
   console.log('create SEEDS & TESTS assets')
@@ -165,7 +166,7 @@ const empty = async( account, tokenaccount) => {
 
   console.log('add liquidity 2 - transfer')
 
-  await contracts.token.transfer( firstuser, oswaps, "10.0000 SEEDS", "123", { authorization: `${firstuser}@active` })
+  await contracts.token.transfer( firstuser, oswaps, "10.0000 SEEDS", "1112", { authorization: `${firstuser}@active` })
 
   assert({
     given: 'send tokens',
@@ -201,6 +202,11 @@ const empty = async( account, tokenaccount) => {
     ],
     expected: [ { rows: [ { token_id: 0, family: 'antelope', chain: 'Telos', chain_code: '4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11', contract: 'token.seeds', contract_code: '14781000357308952576', symbol: 'SEEDS', active: 0, metadata: '', weight: '0.50000000000000000' }, { token_id: 1, family: 'antelope', chain: 'Telos', chain_code: '4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11', contract: 'token.seeds', contract_code: '14781000357308952576', symbol: 'TESTS', active: 0, metadata: '', weight: '0.00000000000000000' } ], more: false, next_key: '' }, { rows: [ { balance: '5.0000 SEEDS' } ], more: false, next_key: '' } ]
   })
+
+
+  console.log('reset')
+  await contracts.oswaps.reset( { authorization: `${oswaps}@owner` })
+
 
 })
 

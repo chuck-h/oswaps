@@ -204,6 +204,7 @@ CONTRACT oswaps : public contract {
         name manager;
         uint64_t nonce_life_msec;
         checksum256 chain_id;
+        uint32_t last_nonce;
       } config_row;
 
       // types of tokens
