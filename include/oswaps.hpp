@@ -117,9 +117,9 @@ CONTRACT oswaps : public contract {
           * @param account - the account receiving the tokens
           * @param token_id - a numerical token identifier in the asset table
           * @param amount - the amount of asset (quantity, symbol) to withdraw from pool;
-          * @param weight_fraction - the new weight fraction (or zero)
+          * @param weight - the new balancer weight (or zero)
       */
-      ACTION withdraw(name account, uint64_t token_id, string amount, float weight_frac);
+      ACTION withdraw(name account, uint64_t token_id, string amount, float weight);
 
       /**
           * The `addliqprep` action adds liquidity while simultaneously
@@ -130,12 +130,12 @@ CONTRACT oswaps : public contract {
           * @param account - the account sourcing the tokens
           * @param token_id - a numerical token identifier in the asset table
           * @param amount - the amount of asset (quantity, symbol) to add to pool;
-          * @param weight_fraction - the new weight fraction (or zero)
+          * @param weight - the new balancer weight (or zero)
           *
           * @result - a nonce identifying this transaction
       */
       [[eosio::action]] uint32_t addliqprep(name account, uint64_t token_id,
-                                            string amount, float weight_frac);
+                                            string amount, float weight);
 
       /**
           * The `exchangeprep` action is a function describing a conversion
@@ -183,6 +183,22 @@ CONTRACT oswaps : public contract {
       
   private:
 
+      /********** standard token tables ***********/
+      TABLE account { // scoped on account name
+        asset    balance;
+        uint64_t primary_key()const { return balance.symbol.code().raw(); }
+      };
+      TABLE currency_stats {  // scoped on token symbol code
+        asset    supply;
+        asset    max_supply;
+        name     issuer;
+        uint64_t primary_key()const { return supply.symbol.code().raw(); }
+      };
+      typedef eosio::multi_index< "accounts"_n, account > accounts;
+      typedef eosio::multi_index< "stat"_n, currency_stats > stats;
+      /**************/
+
+      
       // config
       TABLE config { // singleton, scoped by contract account name
         name manager;
@@ -214,7 +230,7 @@ CONTRACT oswaps : public contract {
        name account;
        uint64_t token_id;
        string amount;
-       float weight_frac;
+       float weight;
        
        uint64_t primary_key() const { return expires.elapsed._count; }
        uint64_t by_nonce() const { return nonce; }

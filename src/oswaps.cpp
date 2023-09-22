@@ -48,22 +48,21 @@ void oswaps::reset() {
 void oswaps::init(name manager, uint64_t nonce_life_msec, string chain) {
   configs configset(get_self(), get_self().value);
   bool reconfig = configset.exists();
+  auto cfg = configset.get_or_create(get_self(), config_row);
   if(reconfig) {
-    // TODO allow transfer to new manager account
-    require_auth2(get_self().value, "owner"_n.value);
+    require_auth(cfg.manager);
   } else {
-    require_auth(manager);
+    require_auth2(get_self().value, "owner"_n.value);
   }
   // TODO parse chain into chain_name, chain_code
   string chain_name = "Telos";
   checksum256 chain_code = telos_chain_id;
   check(chain == chain_name, "currently only Telos chain supported");
-  auto config_entry = configset.get_or_create(get_self(), config_row);
   check(chain.size() <= 100, "chain name too long");
-  config_entry.chain_id = chain_code;
-  config_entry.manager = manager;
-  config_entry.nonce_life_msec = nonce_life_msec;
-  configset.set(config_entry, get_self());
+  cfg.chain_id = chain_code;
+  cfg.manager = manager;
+  cfg.nonce_life_msec = nonce_life_msec;
+  configset.set(cfg, get_self());
 }
 
 void oswaps::freeze(name actor, uint64_t token_id, string symbol) {
@@ -79,7 +78,6 @@ void oswaps::createasseta(name actor, string chain, name contract, symbol_code s
   string chain_name = "Telos";
   checksum256 chain_code = telos_chain_id;
   check(chain == chain_name, "currently only Telos chain supported");
-    
   assettable.emplace(actor, [&]( auto& s ) {
     s.token_id = assettable.available_primary_key();
     s.family = "antelope"_n;
@@ -95,7 +93,7 @@ void oswaps::createasseta(name actor, string chain, name contract, symbol_code s
 
 }
 
-void oswaps::withdraw(name account, uint64_t token_id, string amount, float weight_frac) {
+void oswaps::withdraw(name account, uint64_t token_id, string amount, float weight) {
   configs configset(get_self(), get_self().value);
   check(configset.exists(), "not configured.");
   auto cfg = configset.get();
@@ -103,26 +101,66 @@ void oswaps::withdraw(name account, uint64_t token_id, string amount, float weig
   assets assettable(get_self(), get_self().value);
   auto a = assettable.require_find(token_id, "unrecog token id");
   // TODO verify chain, family, and contract
-  // look up token precision from stat table of contract
-  // update weight fractions
-  // launch inline transfer action  
+  symbol_code asset_symbol_code = symbol_code(a->symbol);
+  stats stattable(name(a->contract_code), asset_symbol_code.raw());
+  auto st = stattable.require_find(asset_symbol_code.raw(), "can't stat symbol");
+  uint64_t amount64 = amount_from(st->supply.symbol, amount);
+  asset qty = asset(amount64, st->supply.symbol);
+  accounts accttable(name(a->contract_code), get_self().value);
+  auto ac = accttable.find(symbol_code(a->symbol).raw());
+  uint64_t bal_before = 0;
+  if(ac != accttable.end()) {
+    bal_before = ac->balance.amount;
+  }
+  check(bal_before > amount64, "withdraw: insufficient balance");
+  float new_weight = weight;
+  if(weight == 0.0) {
+    new_weight = a->weight * (1.0 - float(amount64)/bal_before);
+  }
+  assettable.modify(a, get_self(), [&](auto& s) {
+    s.weight = new_weight;
+  });
+
+  action (
+    permission_level{get_self(), "active"_n},
+    name(a->contract_code),
+    "transfer"_n,
+    std::make_tuple(get_self(), account, qty, std::string("oswaps withdrawal"))
+  ).send(); 
 }
 
 uint32_t oswaps::addliqprep(name account, uint64_t token_id,
-                            string amount, float weight_frac) {
+                            string amount, float weight) {
   configs configset(get_self(), get_self().value);
-  auto config_entry = configset.get();
+  auto cfg = configset.get();
+  assets assettable(get_self(), get_self().value);
+  auto a = assettable.require_find(token_id, "unrecog token id");
+  // TODO verify chain & family
+  symbol_code asset_symbol_code = symbol_code(a->symbol);
+  stats stattable(name(a->contract_code), asset_symbol_code.raw());
+  auto st = stattable.require_find(asset_symbol_code.raw(), "can't stat symbol");
+  uint64_t amount64 = amount_from(st->supply.symbol, amount);
+  accounts accttable(name(a->contract_code), get_self().value);
+  auto ac = accttable.find(symbol_code(a->symbol).raw());
+  uint64_t bal_before = 0;
+  if(ac != accttable.end()) {
+    bal_before = ac->balance.amount;
+  }
+  float new_weight = weight;
+  if(weight == 0.0) {
+    check(bal_before > 0, "zero weight requires existing balance");
+    new_weight = a->weight * (1.0 + float(amount64)/bal_before);
+  }
   adpreps adpreptable(get_self(), get_self().value);
   adprep ap;
   ap.nonce = 123; // TODO use uint32 pseudorandom or nonrepeat algo
   ap.expires = time_point(microseconds(
     current_time_point().time_since_epoch().count()
-    + 1000*config_entry.nonce_life_msec));
+    + 1000*cfg.nonce_life_msec));
   ap.account = account;
   ap.token_id = token_id;
   ap.amount = amount;
-  // TODO handle weight_frac==0 => keep ratio
-  ap.weight_frac = weight_frac;
+  ap.weight = new_weight;
   adpreptable.emplace(account, [&]( auto& s ) {
     s = ap;
   });
@@ -148,6 +186,7 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
     name tkcontract = get_first_receiver();
     // look up memo field in adprep and exprep tables
     uint64_t memo_nonce;
+    // TODO get rightmost token of memo as nonce; validate format
     memo_nonce = std::stol(memo, nullptr, 0); // could throw on bad memo
     // if in adprep table
     adpreps adpreptable(get_self(), get_self().value);
@@ -161,6 +200,10 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
       check(a->contract == tkcontract.to_string(), "mismatched contract");
       uint64_t amt = amount_from(quantity.symbol, itr->amount);
       check(amt == quantity.amount, "transfer qty mismatched to prep");
+      assettable.modify(a, get_self(), [&](auto& s) {
+        s.weight = itr->weight;
+  });
+
     } else {
       expreps expreptable(get_self(), get_self().value);
       auto exidx = expreptable.get_index<"bynonce"_n>();

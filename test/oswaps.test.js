@@ -1,8 +1,8 @@
 console.log('oswaps.test.js')
 
 const { describe } = require("riteway")
-const { eos, names, getTableRows, isLocal, sleep, initContracts,
-        httpEndpoint, getBalance, getBalanceFloat, asset } = require("../scripts/helper")
+const { eos, names, accounts, getTableRows, isLocal, sleep, initContracts,
+        httpEndpoint, getBalance, getBalanceFloat, asset, allContracts } = require("../scripts/helper")
 const { addActorPermission } = require("../scripts/deploy")
 const { equals } = require("ramda")
 const fetch = require("node-fetch");
@@ -41,6 +41,7 @@ const get_supply = async( code, symbol ) => {
   return res.rows[0].supply;
 }
 
+
 describe('oswaps', async assert => {
 
   if (!isLocal()) {
@@ -51,17 +52,40 @@ describe('oswaps', async assert => {
   console.log('installed at '+oswaps)
   const contracts = await Promise.all([
     eos.contract(oswaps),
-    eos.contract(token)
-  ]).then(([oswaps, token]) => ({
-    oswaps, token
+    eos.contract(token),
+    eos.contract(testtoken)
+  ]).then(([oswaps, token, testtoken]) => ({
+    oswaps, token, testtoken
   }))
+
+const empty = async( account, tokenaccount) => {
+  const resp = await getTableRows({
+    code: tokenaccount.account,
+    scope: account,
+    table: 'accounts',
+    json: true
+  })
+  const res = await resp;
+  var bal = res.rows.filter((x)=>x.balance.split(' ')[1] == tokenaccount.supply.split(' ')[1])
+  if (bal.length == 0 || bal[0].balance.split(' ')[0] == 0) {
+    return
+  }
+  await contracts[tokenaccount.name].transfer( account, owner, bal[0].balance,
+     "empty", { authorization: `${account}@active` })
+} 
 
   const starttime = new Date()
 
   console.log('--Normal operations--')
 
+  console.log('add eosio.code permissions')
+  await addActorPermission(oswaps, 'active', oswaps, 'eosio.code')
+
   console.log('reset')
   await contracts.oswaps.reset( { authorization: `${oswaps}@owner` })
+  console.log('sending oswaps token balances back to owner')
+  await empty(oswaps, accounts.token)
+  await empty(oswaps, accounts.testtoken)
 
   assert({
     given: 'reset all',
@@ -71,7 +95,7 @@ describe('oswaps', async assert => {
   })
 
   console.log('first init')
-  await contracts.oswaps.init( firstuser, 10000, "Telos", { authorization: `${firstuser}@active` })
+  await contracts.oswaps.init( firstuser, 10000, "Telos", { authorization: `${oswaps}@owner` })
 
   assert({
     given: 'init',
@@ -86,7 +110,7 @@ describe('oswaps', async assert => {
   })
 
   console.log('reconfigure')
-  await contracts.oswaps.init( seconduser, 20000, "Telos", { authorization: `${oswaps}@owner` })
+  await contracts.oswaps.init( seconduser, 20000, "Telos", { authorization: `${firstuser}@active` })
 
   assert({
     given: 'init',
@@ -120,7 +144,7 @@ describe('oswaps', async assert => {
   console.log('add liquidity 1 - prep')
   // TBD this expiration computation doesn't make sense, but works.
   const exptimestamp = (new Date(500*Math.trunc(Date.now()/500) + 20500)).toISOString().slice(0,-1);
-  var res = await contracts.oswaps.addliqprep( firstuser, 1, "10.0000 SEEDS", 1.00, { authorization: `${firstuser}@active` })
+  var res = await contracts.oswaps.addliqprep( firstuser, 0, "10.0000 SEEDS", 1.00, { authorization: `${firstuser}@active` })
   var rvbuf = Buffer.from(
        res.processed.action_traces[0].return_value_hex_data, 'hex'
      )
@@ -136,7 +160,7 @@ describe('oswaps', async assert => {
       table: 'adpreps',
       json: true
     })),
-    expected: { rows: [ { nonce: rv, expires: exptimestamp, account: 'seedsuseraaa', token_id: 1, amount: '10.0000 SEEDS', weight_frac: '1.00000000000000000' } ], more: false, next_key: '' }
+    expected: { rows: [ { nonce: rv, expires: exptimestamp, account: 'seedsuseraaa', token_id: 0, amount: '10.0000 SEEDS', weight: '1.00000000000000000' } ], more: false, next_key: '' }
   })
 
   console.log('add liquidity 2 - transfer')
@@ -153,6 +177,29 @@ describe('oswaps', async assert => {
       json: true
     })),
     expected: { rows: [ { balance: '10.0000 SEEDS' } ], more: false, next_key: '' }
+  })
+
+  console.log('withdraw liquidity')
+
+  await contracts.oswaps.withdraw( firstuser, 0, "5.0000 SEEDS", 0.00, { authorization: `${seconduser}@active` })
+
+  assert({
+    given: 'withdraw tokens',
+    should: 'reduce liquidity',
+    actual: [(await getTableRows({
+        code: oswaps,
+        scope: oswaps,
+        table: 'assets',
+        json: true
+      })),
+      (await getTableRows({
+        code: token,
+        scope: oswaps,
+        table: 'accounts',
+        json: true
+      }))
+    ],
+    expected: [ { rows: [ { token_id: 0, family: 'antelope', chain: 'Telos', chain_code: '4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11', contract: 'token.seeds', contract_code: '14781000357308952576', symbol: 'SEEDS', active: 0, metadata: '', weight: '0.50000000000000000' }, { token_id: 1, family: 'antelope', chain: 'Telos', chain_code: '4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11', contract: 'token.seeds', contract_code: '14781000357308952576', symbol: 'TESTS', active: 0, metadata: '', weight: '0.00000000000000000' } ], more: false, next_key: '' }, { rows: [ { balance: '5.0000 SEEDS' } ], more: false, next_key: '' } ]
   })
 
 })
