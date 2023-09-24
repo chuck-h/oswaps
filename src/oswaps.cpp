@@ -91,9 +91,11 @@ void oswaps::init(name manager, uint64_t nonce_life_msec, string chain) {
 }
 
 void oswaps::freeze(name actor, uint64_t token_id, string symbol) {
+  check(false, "freeze not supported");
 }
 
 void oswaps::unfreeze(name actor, uint64_t token_id, string symbol) {
+  check(false, "unfreeze not supported");
 };
 
 void oswaps::createasseta(name actor, string chain, name contract, symbol_code symbol, string meta) {
@@ -279,13 +281,19 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
     check(to == get_self(), "This transfer is not for oswaps");
     check(quantity.amount >= 0, "transfer quantity must be positive");
     name tkcontract = get_first_receiver();
-    // look up memo field in adprep and exprep tables
-    uint64_t memo_nonce;
-    // TODO get rightmost token of memo as nonce; validate format
-    memo_nonce = std::stol(memo, nullptr, 0); // could throw on bad memo
-    // if in adprep table
+    // get rightmost numerical token of memo as nonce
+    size_t mp = memo.find_last_not_of("0123456789");
+    check(mp+1 != memo.length(), "no nonce at end of memo");
+    string nonce_string;
+    if (mp == string::npos) {
+      nonce_string = memo;
+    } else {
+      nonce_string = memo.substr(mp+1);
+    }
+    uint64_t memo_nonce = std::stol(nonce_string, nullptr);
     adpreps adpreptable(get_self(), get_self().value);
-    //auto adidx = adpreptable.get_index<"bynonce"_n>();
+    // TODO: purge stale adprep table entries
+    // if in adprep table
     auto itr = adpreptable.find( memo_nonce );
     if (itr != adpreptable.end()) {
       // accept liquidity addition if valid
@@ -298,9 +306,10 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
       assettable.modify(a, same_payer, [&](auto& s) {
         s.weight = itr->weight;
       });
-
+      adpreptable.erase(itr);
     } else {
       expreps expreptable(get_self(), get_self().value);
+      // TODO: purge stale exprep table entries
       auto ex = expreptable.find( memo_nonce );
       if (ex == expreptable.end()) {
         check(false, "no matching transaction");
@@ -352,17 +361,18 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
         in_bal_after = llround(in_bal_before * exp(lnc));
         computed_amt = in_bal_after - in_bal_before;
         check(computed_amt <= in_amount64, "input over limit");
-        //check(false, std::to_string(lc)+" "+std::to_string(lnc)+" "+std::to_string(in_bal_before));
       }
       int64_t in_surplus = 0;
+      asset out_qty;
       if(input_is_exact) {
         check(in_amount64 == quantity.amount, "transfer qty mismatched to prep");
+        out_qty = asset(computed_amt, stout->supply.symbol);
       } else {
         in_surplus = quantity.amount - computed_amt;
         check(in_surplus >= 0, "insufficient amount transferred");
+        out_qty = asset(out_amount64, stout->supply.symbol);
       }
       // send exchange output to recipient 
-      asset out_qty = asset(out_amount64, stout->supply.symbol);
       action (
         permission_level{get_self(), "active"_n},
         name(aout->contract_code),
@@ -378,7 +388,8 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
           "transfer"_n,
           std::make_tuple(get_self(), ex->sender, overpayment, std::string("oswaps exchange refund overpayment"))
         ).send();
-       }
+      }
+      expreptable.erase(ex); 
     }
 }
 

@@ -167,7 +167,7 @@ const empty = async( account, tokenaccount) => {
 
   console.log('add liquidity 2 - transfer')
 
-  await contracts.token.transfer( firstuser, oswaps, "10.0000 SEEDS", "1112", { authorization: `${firstuser}@active` })
+  await contracts.token.transfer( firstuser, oswaps, "10.0000 SEEDS", "nonce 1112", { authorization: `${firstuser}@active` })
 
   assert({
     given: 'send tokens',
@@ -241,7 +241,7 @@ const empty = async( account, tokenaccount) => {
   console.log(`action returned ${rv}`)
   
   assert({
-    given: 'exchangeprep',
+    given: 'exchangeprep, exact out',
     should: 'create table entry',
     actual: (await getTableRows({
       code: oswaps,
@@ -270,14 +270,73 @@ const empty = async( account, tokenaccount) => {
       scope: seconduser,
       table: 'accounts',
       json: true
+    }) ],
+    expected: [ { rows: [ { balance: '4.8000 SEEDS' }, { balance: '10.2062 TESTS' } ], more: false, next_key: '' }, { rows: [ { balance: '0.2000 SEEDS' } ], more: false, next_key: '' } ]
+  })
+
+  console.log('exchange 3 - prep')
+  // TBD this expiration computation doesn't make sense, but works.
+  exptimestamp = (new Date(500*Math.trunc(Date.now()/500) + 20500)).toISOString().slice(0,-1);
+  res = await contracts.oswaps.exchangeprep( owner, 1, "0.2500 TESTS",
+       seconduser, 0, "0.2000 SEEDS", '{"exact":"in"}', "my memo", { authorization: `${owner}@active` })
+  rvbuf = Buffer.from(
+       res.processed.action_traces[0].return_value_hex_data, 'hex'
+     )
+  //console.log(rvbuf);
+  rv = [1,9,17,25].map((x)=>rvbuf.readInt32LE(x));
+  console.log(`action returned ${rv}`)
+  
+  assert({
+    given: 'exchangeprep, exact in',
+    should: 'create table entry',
+    actual: (await getTableRows({
+      code: oswaps,
+      scope: oswaps,
+      table: 'expreps',
+      json: true
+    })),
+    expected: { rows: [ { nonce: 1115, expires: exptimestamp, sender: 'owner', in_token_id: 1, in_amount: '0.2500 TESTS', recipient: 'seedsuserbbb', out_token_id: 0, out_amount: '0.2000 SEEDS', mods: '{"exact":"in"}', memo: 'my memo' } ], more: false, next_key: '' }
+  })
+  
+  console.log('exchange 4 - transfer')
+
+  await contracts.token.transfer( owner, oswaps, "0.2500 TESTS", "1115", { authorization: `${owner}@active` })
+
+  assert({
+    given: 'send tokens',
+    should: 'execute exchange',
+    actual: [ await getTableRows({
+      code: token,
+      scope: oswaps,
+      table: 'accounts',
+      json: true
     }),
     await getTableRows({
       code: token,
-      scope: owner,
+      scope: seconduser,
       table: 'accounts',
       json: true
     }) ],
-    expected: [ { rows: [ { balance: '4.8000 SEEDS' }, { balance: '10.2062 TESTS' } ], more: false, next_key: '' }, { rows: [ { balance: '0.2000 SEEDS' } ], more: false, next_key: '' } ]
+    expected: [ { rows: [ { balance: '4.5732 SEEDS' }, { balance: '10.4562 TESTS' } ], more: false, next_key: '' }, { rows: [ { balance: '0.4268 SEEDS' } ], more: false, next_key: '' } ]
+  })
+
+  console.log("check for clean prep tables")
+  assert({
+    given: 'read prep tables',
+    should: 'be no entries',
+    actual: [ await getTableRows({
+      code: oswaps,
+      scope: oswaps,
+      table: 'adpreps',
+      json: true
+    }),
+    await getTableRows({
+      code: oswaps,
+      scope: oswaps,
+      table: 'expreps',
+      json: true
+    }) ],
+    expected: [ { rows: [], more: false, next_key: '' }, { rows: [], more: false, next_key: '' } ]
   })
 
  
