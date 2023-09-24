@@ -142,7 +142,7 @@ void oswaps::withdraw(name account, uint64_t token_id, string amount, float weig
   if(weight == 0.0) {
     new_weight = a->weight * (1.0 - float(amount64)/bal_before);
   }
-  assettable.modify(a, get_self(), [&](auto& s) {
+  assettable.modify(a, same_payer, [&](auto& s) {
     s.weight = new_weight;
   });
 
@@ -188,7 +188,7 @@ uint32_t oswaps::addliqprep(name account, uint64_t token_id,
   ap.token_id = token_id;
   ap.amount = amount;
   ap.weight = new_weight;
-  adpreptable.emplace(account, [&]( auto& s ) {
+  adpreptable.emplace(get_self(), [&]( auto& s ) {
     s = ap;
   });
   return ap.nonce;
@@ -265,7 +265,7 @@ std::vector<int64_t> oswaps::exchangeprep(
   ex.out_amount = out_amount;
   ex.mods = mods;
   ex.memo = memo;
-  expreptable.emplace(sender, [&]( auto& s ) {
+  expreptable.emplace(get_self(), [&]( auto& s ) {
     s = ex;
   });
 
@@ -294,7 +294,7 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
       check(a->contract == tkcontract.to_string(), "wrong token contract");
       uint64_t amt = amount_from(quantity.symbol, itr->amount);
       check(amt == quantity.amount, "transfer qty mismatched to prep");
-      assettable.modify(a, get_self(), [&](auto& s) {
+      assettable.modify(a, same_payer, [&](auto& s) {
         s.weight = itr->weight;
       });
 
