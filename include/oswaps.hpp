@@ -150,10 +150,11 @@ CONTRACT oswaps : public contract {
           * In the action call, both incoming and outgoing amounts are specified, but
           *   only one of them is the "exact" or "controlling" parameter. The other
           *   amount specifies a limit; the action will fail if the computed exchange value
-          *   is beyond the limit. The `mods` parameter encodes the choice of exact field.
-          *   If the incoming amount is exact, the computed outgoing value must be no less than
-          *   the outgoing amount parameter. If the outgoing amount is exact, the computed
-          *   incoming value must be no more than the value of the incoming amount parameter.
+          *   is beyond the limit. The `mods` parameter (e.g. '{ "exact":"in" }' encodes
+          *   the choice of exact field. If the incoming amount is exact, the computed
+          *   outgoing value must be no less than the outgoing amount parameter. If the
+          *   outgoing amount is exact, the computed incoming value must be no more than
+          *   the value of the incoming amount parameter.
           * 
           * 
           * @param sender - the account sourcing tokens to the transaction
@@ -183,7 +184,7 @@ CONTRACT oswaps : public contract {
       
   private:
 
-      /********** standard token tables ***********/
+      /********** standard token-contract tables ***********/
       TABLE account { // scoped on account name
         asset    balance;
         uint64_t primary_key()const { return balance.symbol.code().raw(); }
@@ -233,8 +234,8 @@ CONTRACT oswaps : public contract {
        string amount;
        float weight;
        
-       uint64_t primary_key() const { return expires.elapsed._count; }
-       uint64_t by_nonce() const { return nonce; }
+       uint64_t primary_key() const { return nonce; }
+       uint64_t by_expiration() const { return expires.elapsed._count; }
      };
 
      // prepped exchanges
@@ -250,8 +251,8 @@ CONTRACT oswaps : public contract {
        string mods;
        string memo;
        
-       uint64_t primary_key() const { return expires.elapsed._count; }
-       uint64_t by_nonce() const { return nonce; }
+       uint64_t primary_key() const { return nonce; }
+       uint64_t by_expiration() const { return expires.elapsed._count; }
      };
        
       typedef eosio::singleton< "configs"_n, config > configs;
@@ -261,12 +262,12 @@ CONTRACT oswaps : public contract {
                  const_mem_fun<assettype, uint64_t, &assettype::by_family > >
                > assets;
       typedef eosio::multi_index<"adpreps"_n, adprep, indexed_by
-               < "bynonce"_n,
-                 const_mem_fun<adprep, uint64_t, &adprep::by_nonce > >
+               < "byexpiration"_n,
+                 const_mem_fun<adprep, uint64_t, &adprep::by_expiration > >
                > adpreps;
       typedef eosio::multi_index<"expreps"_n, exprep, indexed_by
-               < "bynonce"_n,
-                 const_mem_fun<exprep, uint64_t, &exprep::by_nonce > >
+               < "byexpiration"_n,
+                 const_mem_fun<exprep, uint64_t, &exprep::by_expiration > >
                > expreps;
 };
 

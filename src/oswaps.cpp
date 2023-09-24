@@ -24,6 +24,20 @@ uint64_t amount_from(symbol sym, string qty) {
   return rv;
 }
 
+/** hack ** hack ** hack **/
+bool parse_mod_in(string s) {
+  // strip whitespace
+  s.erase(std::remove_if(s.begin(), s.end(), [](unsigned char x) { return std::isspace(x); }), s.end());
+  check(s[0] == '{' && s.back() == '}', "mod: missing braces");
+  size_t f = s.find("\"exact\"", 1);
+  check(f != string::npos, "mod: missing exact field");
+  bool exact_in = s.substr(f+1, 5) == ":\"in\"";
+  if (!exact_in ) {
+    check(s.substr(f+1, 6) == ":\"out\"", "mod: exact fld must be in or out");
+  }
+} 
+  
+
 void oswaps::reset() {
   require_auth2(get_self().value, "owner"_n.value);
   {
@@ -35,6 +49,13 @@ void oswaps::reset() {
   }
   {
     adpreps tbl(get_self(), get_self().value);
+    auto itr = tbl.begin();
+    while (itr != tbl.end()) {
+      itr = tbl.erase(itr);
+    }
+  }
+  {
+    expreps tbl(get_self(), get_self().value);
     auto itr = tbl.begin();
     while (itr != tbl.end()) {
       itr = tbl.erase(itr);
@@ -176,11 +197,78 @@ std::vector<int64_t> oswaps::exchangeprep(
            name sender, uint64_t in_token_id, string in_amount,
            name recipient, uint64_t out_token_id, string out_amount,
            string mods, string memo) {
+  configs configset(get_self(), get_self().value);
+  auto cfg = configset.get();
+  cfg.last_nonce += 1;
+  configset.set(cfg, get_self());
+  assets assettable(get_self(), get_self().value);
+  
+  auto ain = assettable.require_find(in_token_id, "unrecog input token id");
+  symbol_code in_asset_symbol_code = symbol_code(ain->symbol);
+  stats in_stattable(name(ain->contract_code), in_asset_symbol_code.raw());
+  auto stin = in_stattable.require_find(in_asset_symbol_code.raw(), "can't stat symbol");
+  uint64_t in_amount64 = amount_from(stin->supply.symbol, in_amount);
+  accounts in_accttable(name(ain->contract_code), get_self().value);
+  auto acin = in_accttable.find(symbol_code(ain->symbol).raw());
+  uint64_t in_bal_before = 0;
+  if(acin != in_accttable.end()) {
+    in_bal_before = acin->balance.amount;
+  }
+  check(in_bal_before > 0, "zero input balance");
+  
+  auto aout = assettable.require_find(out_token_id, "unrecog output token id");
+  symbol_code out_asset_symbol_code = symbol_code(aout->symbol);
+  stats out_stattable(name(aout->contract_code), out_asset_symbol_code.raw());
+  auto stout = out_stattable.require_find(out_asset_symbol_code.raw(), "can't stat symbol");
+  uint64_t out_amount64 = amount_from(stout->supply.symbol, out_amount);
+  accounts out_accttable(name(aout->contract_code), get_self().value);
+  auto acout = out_accttable.find(symbol_code(aout->symbol).raw());
+  uint64_t out_bal_before = 0;
+  if(acout != out_accttable.end()) {
+    out_bal_before = acout->balance.amount;
+  }
+
+  // balancer computation 
   // for controlling asset, compute LC = ln(new/old)
   // for noncontrolling asset compute LNC = - WC/WNC * LC
   // for noncontrolling compute new = old * exp(LNC)
-        
-  std::vector<int64_t> rv{5, 4, 3, 2, 1};
+  double lc, lnc;
+  bool input_is_exact = parse_mod_in(mods);
+  int64_t in_bal_after, out_bal_after, computed_amt;
+  if (input_is_exact) {
+    in_bal_after = in_bal_before + in_amount64;
+    lc = log((double)in_bal_after/in_bal_before);
+    lnc = ain->weight/aout->weight * lc;
+    out_bal_after = out_bal_before * exp(lnc);
+    computed_amt = out_bal_before - out_bal_after;
+  } else {
+    out_bal_after = out_bal_before - out_amount64;
+    check(out_bal_after > 0, "insufficient pool bal output token");
+    lc = log((double)out_bal_after/out_bal_before);
+    lnc = aout->weight/ain->weight * lc;
+    in_bal_after = in_bal_before * exp(lnc);
+    computed_amt = in_bal_after - in_bal_before;
+  }    
+
+  expreps expreptable(get_self(), get_self().value);
+  exprep ex;
+  ex.nonce = cfg.last_nonce;
+  ex.expires = time_point(microseconds(
+    current_time_point().time_since_epoch().count()
+    + 1000*cfg.nonce_life_msec));
+  ex.sender = sender;
+  ex.in_token_id = in_token_id;
+  ex.in_amount = in_amount;
+  ex.recipient = recipient;
+  ex.out_token_id = out_token_id;
+  ex.out_amount = out_amount;
+  ex.mods = mods;
+  ex.memo = memo;
+  expreptable.emplace(sender, [&]( auto& s ) {
+    s = ex;
+  });
+
+  std::vector<int64_t> rv{static_cast<int64_t>(ex.nonce), 0, 0, computed_amt };
   return rv;
 }
 
@@ -195,9 +283,9 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
     memo_nonce = std::stol(memo, nullptr, 0); // could throw on bad memo
     // if in adprep table
     adpreps adpreptable(get_self(), get_self().value);
-    auto adidx = adpreptable.get_index<"bynonce"_n>();
-    auto itr = adidx.find( memo_nonce );
-    if (itr != adidx.end()) {
+    //auto adidx = adpreptable.get_index<"bynonce"_n>();
+    auto itr = adpreptable.find( memo_nonce );
+    if (itr != adpreptable.end()) {
       // accept liquidity addition if valid
       assets assettable(get_self(), get_self().value);
       auto a = assettable.require_find(itr->token_id, "unrecog token id");
@@ -211,9 +299,9 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
 
     } else {
       expreps expreptable(get_self(), get_self().value);
-      auto exidx = expreptable.get_index<"bynonce"_n>();
-      auto itr = exidx.find( memo_nonce );
-      if (itr == exidx.end()) {
+      //auto exidx = expreptable.get_index<"bynonce"_n>();
+      auto itr = expreptable.find( memo_nonce );
+      if (itr == expreptable.end()) {
         check(false, "no matching transaction");
       } else {
         std::vector<int64_t> result = exchangeprep(
