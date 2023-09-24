@@ -227,7 +227,47 @@ const empty = async( account, tokenaccount) => {
     expected: { rows: [ { balance: '5.0000 SEEDS' }, { balance: '10.0000 TESTS' } ], more: false, next_key: '' }
   })
 
+  console.log('exchange 1 - prep')
+  // TBD this expiration computation doesn't make sense, but works.
+  exptimestamp = (new Date(500*Math.trunc(Date.now()/500) + 20500)).toISOString().slice(0,-1);
+  res = await contracts.oswaps.exchangeprep( owner, 1, "0.2500 TESTS",
+       seconduser, 0, "0.2000 SEEDS", '{"exact":"out"}', "my memo", { authorization: `${owner}@active` })
+  rvbuf = Buffer.from(
+       res.processed.action_traces[0].return_value_hex_data, 'hex'
+     )
+  //console.log(rvbuf);
+  rv = [1,9,17,25].map((x)=>rvbuf.readInt32LE(x));
+  console.log(`action returned ${rv}`)
+  
+  assert({
+    given: 'exchangeprep',
+    should: 'create table entry',
+    actual: (await getTableRows({
+      code: oswaps,
+      scope: oswaps,
+      table: 'expreps',
+      json: true
+    })),
+    expected: { rows: [ { nonce: 1114, expires: exptimestamp, sender: 'owner', in_token_id: 1, in_amount: '0.2500 TESTS', recipient: 'seedsuserbbb', out_token_id: 0, out_amount: '0.2000 SEEDS', mods: '{"exact":"out"}', memo: 'my memo' } ], more: false, next_key: '' }
+  })
+  
+  console.log('exchange 2 - transfer')
 
+  await contracts.token.transfer( owner, oswaps, "0.3000 TESTS", "1114", { authorization: `${owner}@active` })
+
+  assert({
+    given: 'send tokens',
+    should: 'execute exchange',
+    actual: (await getTableRows({
+      code: token,
+      scope: oswaps,
+      table: 'accounts',
+      json: true
+    })),
+    expected: { rows: [ { balance: '4.8000 SEEDS' }, { balance: '10.2123 TESTS' } ], more: false, next_key: '' }
+  })
+
+ 
   console.log('reset')
   await contracts.oswaps.reset( { authorization: `${oswaps}@owner` })
 

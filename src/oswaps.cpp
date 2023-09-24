@@ -31,10 +31,11 @@ bool parse_mod_in(string s) {
   check(s[0] == '{' && s.back() == '}', "mod: missing braces");
   size_t f = s.find("\"exact\"", 1);
   check(f != string::npos, "mod: missing exact field");
-  bool exact_in = s.substr(f+1, 5) == ":\"in\"";
-  if (!exact_in ) {
-    check(s.substr(f+1, 6) == ":\"out\"", "mod: exact fld must be in or out");
+  bool exact_in = s.substr(f+7, 5) == ":\"in\"";
+  if (!exact_in) {
+    check(s.substr(f+7, 6) == ":\"out\"", "mod: exact fld must be in or out");
   }
+  return exact_in;
 } 
   
 
@@ -238,14 +239,14 @@ std::vector<int64_t> oswaps::exchangeprep(
   if (input_is_exact) {
     in_bal_after = in_bal_before + in_amount64;
     lc = log((double)in_bal_after/in_bal_before);
-    lnc = ain->weight/aout->weight * lc;
+    lnc = -(ain->weight/aout->weight * lc);
     out_bal_after = out_bal_before * exp(lnc);
     computed_amt = out_bal_before - out_bal_after;
   } else {
     out_bal_after = out_bal_before - out_amount64;
     check(out_bal_after > 0, "insufficient pool bal output token");
     lc = log((double)out_bal_after/out_bal_before);
-    lnc = aout->weight/ain->weight * lc;
+    lnc = -(aout->weight/ain->weight * lc);
     in_bal_after = in_bal_before * exp(lnc);
     computed_amt = in_bal_after - in_bal_before;
   }    
@@ -290,32 +291,94 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
       assets assettable(get_self(), get_self().value);
       auto a = assettable.require_find(itr->token_id, "unrecog token id");
       // TODO verify chain & family
-      check(a->contract == tkcontract.to_string(), "mismatched contract");
+      check(a->contract == tkcontract.to_string(), "wrong token contract");
       uint64_t amt = amount_from(quantity.symbol, itr->amount);
       check(amt == quantity.amount, "transfer qty mismatched to prep");
       assettable.modify(a, get_self(), [&](auto& s) {
         s.weight = itr->weight;
-  });
+      });
 
     } else {
       expreps expreptable(get_self(), get_self().value);
-      //auto exidx = expreptable.get_index<"bynonce"_n>();
-      auto itr = expreptable.find( memo_nonce );
-      if (itr == expreptable.end()) {
+      auto ex = expreptable.find( memo_nonce );
+      if (ex == expreptable.end()) {
         check(false, "no matching transaction");
-      } else {
-        std::vector<int64_t> result = exchangeprep(
-           itr->sender, itr->in_token_id, itr->in_amount,
-           itr->recipient, itr->out_token_id, itr->out_amount,
-           itr->mods, itr->memo);
-      // test mods for which asset is controlling
-      // test whether noncontrolling quantity is within limits
-      // if ok, call outgoing transfer as inline action
-      //  call surplus return transaction for incoming asset if needed
       }
+      assets assettable(get_self(), get_self().value);
+      auto ain = assettable.require_find(ex->in_token_id, "unrecog input token id");
+      check(ain->contract == tkcontract.to_string(), "wrong token contract");
+      symbol_code in_asset_symbol_code = symbol_code(ain->symbol);
+      stats in_stattable(name(ain->contract_code), in_asset_symbol_code.raw());
+      auto stin = in_stattable.require_find(in_asset_symbol_code.raw(), "can't stat symbol");
+      uint64_t in_amount64 = amount_from(stin->supply.symbol, ex->in_amount);
+      accounts in_accttable(name(ain->contract_code), get_self().value);
+      auto acin = in_accttable.find(symbol_code(ain->symbol).raw());
+      uint64_t in_bal_before = 0;
+      if(acin != in_accttable.end()) {
+        in_bal_before = acin->balance.amount;
+      }
+      check(in_bal_before > 0, "zero input balance");
+
+      auto aout = assettable.require_find(ex->out_token_id, "unrecog output token id");
+      symbol_code out_asset_symbol_code = symbol_code(aout->symbol);
+      stats out_stattable(name(aout->contract_code), out_asset_symbol_code.raw());
+      auto stout = out_stattable.require_find(out_asset_symbol_code.raw(), "can't stat symbol");
+      uint64_t out_amount64 = amount_from(stout->supply.symbol, ex->out_amount);
+      accounts out_accttable(name(aout->contract_code), get_self().value);
+      auto acout = out_accttable.find(symbol_code(aout->symbol).raw());
+      uint64_t out_bal_before = 0;
+      if(acout != out_accttable.end()) {
+        out_bal_before = acout->balance.amount;
+      }
+
+      // do balancer computation again (balances may have changed)
+      double lc, lnc;
+      bool input_is_exact = parse_mod_in(ex->mods);
+      int64_t in_bal_after, out_bal_after, computed_amt;
+      if (input_is_exact) {
+        in_bal_after = in_bal_before + in_amount64;
+        lc = log((double)in_bal_after/in_bal_before);
+        lnc = -(ain->weight/aout->weight * lc);
+        out_bal_after = out_bal_before * exp(lnc);
+        computed_amt = out_bal_before - out_bal_after;
+        check(computed_amt >= out_amount64, "output below limit");
+      } else {
+        out_bal_after = out_bal_before - out_amount64;
+        check(out_bal_after > 0, "insufficient pool bal output token");
+        lc = log((double)out_bal_after/out_bal_before);
+        lnc = -(aout->weight/ain->weight * lc);
+        in_bal_after = in_bal_before * exp(lnc);
+        computed_amt = in_bal_after - in_bal_before;
+        check(computed_amt <= in_amount64, "input over limit");
+        //check(false, std::to_string(computed_amt));
+      }
+      int64_t in_surplus = 0;
+      if(input_is_exact) {
+        check(in_amount64 == quantity.amount, "transfer qty mismatched to prep");
+      } else {
+        in_surplus = quantity.amount - computed_amt;
+        check(in_surplus >= 0, "insufficient amount transferred");
+      }
+      // send exchange output to recipient 
+      asset out_qty = asset(out_amount64, stout->supply.symbol);
+      action (
+        permission_level{get_self(), "active"_n},
+        name(aout->contract_code),
+        "transfer"_n,
+        std::make_tuple(get_self(), ex->recipient, out_qty, std::string("oswaps exchange"))
+      ).send();
+      // refund surplus to sender
+      if(in_surplus > 0) {
+        asset overpayment = asset(in_surplus, stin->supply.symbol);
+        action (
+          permission_level{get_self(), "active"_n},
+          name(ain->contract_code),
+          "transfer"_n,
+          std::make_tuple(get_self(), ex->sender, overpayment, std::string("oswaps exchange refund overpayment"))
+        ).send();
+       }
     }
 }
-
 
 
   
