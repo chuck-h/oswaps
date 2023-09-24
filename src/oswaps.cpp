@@ -240,16 +240,17 @@ std::vector<int64_t> oswaps::exchangeprep(
     in_bal_after = in_bal_before + in_amount64;
     lc = log((double)in_bal_after/in_bal_before);
     lnc = -(ain->weight/aout->weight * lc);
-    out_bal_after = out_bal_before * exp(lnc);
+    out_bal_after = llround(out_bal_before * exp(lnc));
     computed_amt = out_bal_before - out_bal_after;
   } else {
     out_bal_after = out_bal_before - out_amount64;
     check(out_bal_after > 0, "insufficient pool bal output token");
     lc = log((double)out_bal_after/out_bal_before);
     lnc = -(aout->weight/ain->weight * lc);
-    in_bal_after = in_bal_before * exp(lnc);
+    in_bal_after = llround(in_bal_before * exp(lnc));
     computed_amt = in_bal_after - in_bal_before;
-  }    
+  }
+  printf("balancer lc %d, lnc %d", lc, lnc); 
 
   expreps expreptable(get_self(), get_self().value);
   exprep ex;
@@ -315,7 +316,8 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
       auto acin = in_accttable.find(symbol_code(ain->symbol).raw());
       uint64_t in_bal_before = 0;
       if(acin != in_accttable.end()) {
-        in_bal_before = acin->balance.amount;
+        // must back out transfer which just occurred
+        in_bal_before = acin->balance.amount - quantity.amount;
       }
       check(in_bal_before > 0, "zero input balance");
 
@@ -339,7 +341,7 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
         in_bal_after = in_bal_before + in_amount64;
         lc = log((double)in_bal_after/in_bal_before);
         lnc = -(ain->weight/aout->weight * lc);
-        out_bal_after = out_bal_before * exp(lnc);
+        out_bal_after = llround(out_bal_before * exp(lnc));
         computed_amt = out_bal_before - out_bal_after;
         check(computed_amt >= out_amount64, "output below limit");
       } else {
@@ -347,10 +349,10 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
         check(out_bal_after > 0, "insufficient pool bal output token");
         lc = log((double)out_bal_after/out_bal_before);
         lnc = -(aout->weight/ain->weight * lc);
-        in_bal_after = in_bal_before * exp(lnc);
+        in_bal_after = llround(in_bal_before * exp(lnc));
         computed_amt = in_bal_after - in_bal_before;
         check(computed_amt <= in_amount64, "input over limit");
-        //check(false, std::to_string(computed_amt));
+        //check(false, std::to_string(lc)+" "+std::to_string(lnc)+" "+std::to_string(in_bal_before));
       }
       int64_t in_surplus = 0;
       if(input_is_exact) {

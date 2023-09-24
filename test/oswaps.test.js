@@ -86,6 +86,7 @@ const empty = async( account, tokenaccount) => {
   console.log('sending oswaps token balances back to owner')
   await empty(oswaps, accounts.token)
   await empty(oswaps, accounts.testtoken)
+  await empty(seconduser, accounts.token)
 
   assert({
     given: 'reset all',
@@ -258,13 +259,25 @@ const empty = async( account, tokenaccount) => {
   assert({
     given: 'send tokens',
     should: 'execute exchange',
-    actual: (await getTableRows({
+    actual: [ await getTableRows({
       code: token,
       scope: oswaps,
       table: 'accounts',
       json: true
-    })),
-    expected: { rows: [ { balance: '4.8000 SEEDS' }, { balance: '10.2123 TESTS' } ], more: false, next_key: '' }
+    }),
+    await getTableRows({
+      code: token,
+      scope: seconduser,
+      table: 'accounts',
+      json: true
+    }),
+    await getTableRows({
+      code: token,
+      scope: owner,
+      table: 'accounts',
+      json: true
+    }) ],
+    expected: [ { rows: [ { balance: '4.8000 SEEDS' }, { balance: '10.2062 TESTS' } ], more: false, next_key: '' }, { rows: [ { balance: '0.2000 SEEDS' } ], more: false, next_key: '' } ]
   })
 
  
