@@ -252,7 +252,7 @@ std::vector<int64_t> oswaps::exchangeprep(
     in_bal_after = llround(in_bal_before * exp(lnc));
     computed_amt = in_bal_after - in_bal_before;
   }
-  printf("balancer lc %d, lnc %d", lc, lnc); 
+  printf("balancer lc %f, lnc %f", lc, lnc);
 
   expreps expreptable(get_self(), get_self().value);
   exprep ex;
