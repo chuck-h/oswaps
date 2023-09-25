@@ -116,7 +116,10 @@ class Eos {
             throw err
           }
         }
-
+        const console_outputs = res.processed.action_traces.map((x)=>x.console)
+        if (console_outputs.some((x)=>x!='')) {
+          console.log(console_outputs)
+        }
         return res
 
       }
