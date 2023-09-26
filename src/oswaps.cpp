@@ -323,7 +323,7 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
       adpreptable.erase(itr);
     } else {
       expreps expreptable(get_self(), get_self().value);
-      // TODO: purge stale exprep table entries
+      // purge stale exprep table entries
       auto expreps_byexpiration = expreptable.get_index<"byexpiration"_n>();
       for (auto adx = expreps_byexpiration.begin();
                 adx != expreps_byexpiration.end();) {
