@@ -235,21 +235,18 @@ CONTRACT oswaps : public contract {
         uint32_t last_nonce;
       } config_row;
 
-      // types of tokens
-      TABLE assettype { // single table, scoped by contract account name
+      // types of antelope tokens
+      TABLE assettypea { // single table, scoped by contract account name
         uint64_t token_id;
-        name family;
-        string chain;
         checksum256 chain_code;
-        string contract;
         uint64_t contract_code;
-        string symbol;
+        symbol_code symbol;
         bool active;
         string metadata;
         float weight;
         
         uint64_t primary_key() const { return token_id; }
-        uint64_t by_family() const { return family.value; }
+        checksum256 by_chain() const { return chain_code; }
       };
      
      // prepped liquidity additions
@@ -284,10 +281,10 @@ CONTRACT oswaps : public contract {
        
       typedef eosio::singleton< "configs"_n, config > configs;
       typedef eosio::multi_index< "configs"_n, config >  dump_for_config;
-      typedef eosio::multi_index<"assets"_n, assettype, indexed_by
-               < "byfamily"_n,
-                 const_mem_fun<assettype, uint64_t, &assettype::by_family > >
-               > assets;
+      typedef eosio::multi_index<"assetsa"_n, assettypea, indexed_by
+               < "bychain"_n,
+                 const_mem_fun<assettypea, checksum256, &assettypea::by_chain > >
+               > assetsa;
       typedef eosio::multi_index<"adpreps"_n, adprep, indexed_by
                < "byexpiration"_n,
                  const_mem_fun<adprep, uint64_t, &adprep::by_expiration > >
