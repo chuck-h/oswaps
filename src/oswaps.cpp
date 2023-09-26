@@ -295,8 +295,18 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
       nonce_string = memo.substr(mp+1);
     }
     uint64_t memo_nonce = std::stol(nonce_string, nullptr);
+    int64_t usec_now = current_time_point().time_since_epoch().count();
     adpreps adpreptable(get_self(), get_self().value);
-    // TODO: purge stale adprep table entries
+    // purge stale adprep table entries
+    auto adpreps_byexpiration = adpreptable.get_index<"byexpiration"_n>();
+    for (auto adx = adpreps_byexpiration.begin();
+              adx != adpreps_byexpiration.end();) {
+      if(adx->expires.time_since_epoch().count() < usec_now) {
+        adx = adpreps_byexpiration.erase(adx);
+      } else {
+        break;
+      }
+    }
     // if in adprep table
     auto itr = adpreptable.find( memo_nonce );
     if (itr != adpreptable.end()) {
@@ -314,6 +324,15 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
     } else {
       expreps expreptable(get_self(), get_self().value);
       // TODO: purge stale exprep table entries
+      auto expreps_byexpiration = expreptable.get_index<"byexpiration"_n>();
+      for (auto adx = expreps_byexpiration.begin();
+                adx != expreps_byexpiration.end();) {
+        if(adx->expires.time_since_epoch().count() < usec_now) {
+          adx = expreps_byexpiration.erase(adx);
+        } else {
+          break;
+        }
+      }
       auto ex = expreptable.find( memo_nonce );
       if (ex == expreptable.end()) {
         check(false, "no matching transaction");
