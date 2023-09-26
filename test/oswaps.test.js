@@ -403,7 +403,22 @@ const empty = async( account, tokenaccount) => {
     expected: true
   })
 
+  console.log("use magic nonce")
   
+  await contracts.token.transfer( owner, oswaps, "10.0000 TESTS", "42", { authorization: `${owner}@active` })
+
+  assert({
+    given: 'send TESTS tokens',
+    should: 'add liquidity',
+    actual: (await getTableRows({
+      code: token,
+      scope: oswaps,
+      table: 'accounts',
+      json: true
+    })),
+    expected: { rows: [ { balance: '4.5732 SEEDS' }, { balance: '20.4562 TESTS' } ], more: false, next_key: '' }
+  })
+
   
   
   console.log("forget SEEDS asset")

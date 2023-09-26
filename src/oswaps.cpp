@@ -84,7 +84,7 @@ void oswaps::init(name manager, uint64_t nonce_life_msec, string chain) {
   cfg.manager = manager;
   cfg.nonce_life_msec = nonce_life_msec;
   if (!reconfig) {
-    cfg.last_nonce = 1111;
+    cfg.last_nonce = 1111; // >42 (magic #)
   }
   configset.set(cfg, get_self());
 }
@@ -295,6 +295,10 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
       nonce_string = memo.substr(mp+1);
     }
     uint64_t memo_nonce = std::stol(nonce_string, nullptr);
+    uint64_t bypass_code = 42;
+    if (memo_nonce == bypass_code) {
+      return;
+    }
     int64_t usec_now = current_time_point().time_since_epoch().count();
     adpreps adpreptable(get_self(), get_self().value);
     // purge stale adprep table entries

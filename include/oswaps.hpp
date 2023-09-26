@@ -199,6 +199,8 @@ CONTRACT oswaps : public contract {
           * This action examines the memo field to identify a pending liquidity or
           * exchange event and executes it. If there is no valid pending event
           * matching the transfer, the transfer is blocked.
+          * As a special case, using the magic memo code (42) allows a token
+          * transfer into the contract without a pending event.
           *
           * @param from - token sender
           * @param to - token recipient
