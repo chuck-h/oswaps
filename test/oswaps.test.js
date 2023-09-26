@@ -128,7 +128,12 @@ const empty = async( account, tokenaccount) => {
 
   console.log('create SEEDS & TESTS assets')
   await contracts.oswaps.createasseta( firstuser, "Telos", token, 'SEEDS', "",{ authorization: `${firstuser}@active` })
-  await contracts.oswaps.createasseta( firstuser, "Telos", token, 'TESTS', "",{ authorization: `${firstuser}@active` })
+  var res = await contracts.oswaps.createasseta( firstuser, "Telos", token, 'TESTS', "",{ authorization: `${firstuser}@active` })
+  var rvbuf = Buffer.from(
+       res.processed.action_traces[0].return_value_hex_data, 'hex'
+     )
+  var rv = new Int32Array(rvbuf.buffer, rvbuf.byteOffset, 1)[0]
+  console.log(`action returned ${rv}`)
 
   assert({
     given: 'create',
@@ -146,11 +151,11 @@ const empty = async( account, tokenaccount) => {
   console.log('add liquidity 1 - prep')
   // TBD this expiration computation doesn't make sense, but works.
   var exptimestamp = (new Date(500*Math.trunc(Date.now()/500) + 20500)).toISOString().slice(0,-1);
-  var res = await contracts.oswaps.addliqprep( firstuser, 0, "10.0000 SEEDS", 1.00, { authorization: `${firstuser}@active` })
-  var rvbuf = Buffer.from(
+  res = await contracts.oswaps.addliqprep( firstuser, 0, "10.0000 SEEDS", 1.00, { authorization: `${firstuser}@active` })
+  rvbuf = Buffer.from(
        res.processed.action_traces[0].return_value_hex_data, 'hex'
      )
-  var rv = new Int32Array(rvbuf.buffer, rvbuf.byteOffset, 1)[0]
+  rv = new Int32Array(rvbuf.buffer, rvbuf.byteOffset, 1)[0]
   console.log(`action returned ${rv}`)
   
   assert({
@@ -337,6 +342,21 @@ const empty = async( account, tokenaccount) => {
       json: true
     }) ],
     expected: [ { rows: [], more: false, next_key: '' }, { rows: [], more: false, next_key: '' } ]
+  })
+
+  console.log("forget SEEDS asset")
+  await contracts.oswaps.forgetasset( seconduser, 0, "removing SEEDS",
+       { authorization: `${seconduser}@active` })  
+  assert({
+    given: 'read asset table',
+    should: 'be no SEEDS entry',
+    actual: await getTableRows({
+      code: oswaps,
+      scope: oswaps,
+      table: 'assets',
+      json: true
+    }),
+    expected: { rows: [ { token_id: 1, family: 'antelope', chain: 'Telos', chain_code: '4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11', contract: 'token.seeds', contract_code: '14781000357308952576', symbol: 'TESTS', active: 0, metadata: '', weight: '1.00000000000000000' } ], more: false, next_key: '' }
   })
 
  

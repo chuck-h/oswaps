@@ -98,15 +98,16 @@ void oswaps::unfreeze(name actor, uint64_t token_id, string symbol) {
   check(false, "unfreeze not supported");
 };
 
-void oswaps::createasseta(name actor, string chain, name contract, symbol_code symbol, string meta) {
+uint64_t oswaps::createasseta(name actor, string chain, name contract, symbol_code symbol, string meta) {
   require_auth(actor);
   assets assettable(get_self(), get_self().value);
   // TODO parse chain into chain_name, chain_code
   string chain_name = "Telos";
   checksum256 chain_code = telos_chain_id;
   check(chain == chain_name, "currently only Telos chain supported");
+  uint64_t token_id = assettable.available_primary_key();
   assettable.emplace(actor, [&]( auto& s ) {
-    s.token_id = assettable.available_primary_key();
+    s.token_id = token_id;
     s.family = "antelope"_n;
     s.chain = chain_name;
     s.chain_code = chain_code;
@@ -117,8 +118,19 @@ void oswaps::createasseta(name actor, string chain, name contract, symbol_code s
     s.metadata = meta;
     s.weight = 0.0;
   });
-
+  return token_id;
 }
+
+void oswaps::forgetasset(name actor, uint64_t token_id, string memo) {
+  configs configset(get_self(), get_self().value);
+  check(configset.exists(), "not configured.");
+  auto cfg = configset.get();
+  check(actor == cfg.manager, "must be manager");
+  require_auth(actor);
+  assets assettable(get_self(), get_self().value);
+  auto a = assettable.require_find(token_id, "unrecog token id");
+  assettable.erase(a);
+}  
 
 void oswaps::withdraw(name account, uint64_t token_id, string amount, float weight) {
   configs configset(get_self(), get_self().value);

@@ -105,8 +105,21 @@ CONTRACT oswaps : public contract {
           * @param contract - the contract name
           * @param symbol - the symbol of the affected token
           * @param meta - metadata (JSON) 
+          *
+          * @result - the token_id for this asset
       */
-      ACTION createasseta(name actor, string chain, name contract, symbol_code symbol, string meta);
+      [[eosio::action]] uint64_t createasseta(
+              name actor, string chain, name contract, symbol_code symbol, string meta);
+
+      /**
+          * The `forgetasset` action removes an entry in the asset table. This does
+          * not affect any token balance held by the contract.
+          *
+          * @param actor - an account empowered remove the asset (manager account)
+          * @param token_id - a numerical token identifier in the asset table
+          * @param memo
+      */
+      ACTION forgetasset(name actor, uint64_t token_id, string memo);
 
       /**
           * The `withdraw` action withdraws liquidity while simultaneously
