@@ -141,10 +141,10 @@ const empty = async( account, tokenaccount) => {
     actual: await getTableRows({
       code: oswaps,
       scope: oswaps,
-      table: 'assets',
+      table: 'assetsa',
       json: true
     }),
-    expected: { rows: [ { token_id: 0, family: 'antelope', chain: 'Telos', chain_code: '4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11', contract: 'token.seeds', contract_code: '14781000357308952576', symbol: 'SEEDS', active: 0, metadata: '', weight: '0.00000000000000000' }, { token_id: 1, family: 'antelope', chain: 'Telos', chain_code: '4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11', contract: 'token.seeds', contract_code: '14781000357308952576', symbol: 'TESTS', active: 0, metadata: '', weight: '0.00000000000000000' } ], more: false, next_key: '' }
+    expected: { rows: [ { token_id: 0, chain_code: '4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11', contract_code: '14781000357308952576', symbol: 'SEEDS', active: 1, metadata: '', weight: '0.00000000000000000' }, { token_id: 1, chain_code: '4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11', contract_code: '14781000357308952576', symbol: 'TESTS', active: 1, metadata: '', weight: '0.00000000000000000' } ], more: false, next_key: '' }
     
   })
 
@@ -196,7 +196,7 @@ const empty = async( account, tokenaccount) => {
     actual: [(await getTableRows({
         code: oswaps,
         scope: oswaps,
-        table: 'assets',
+        table: 'assetsa',
         json: true
       })),
       (await getTableRows({
@@ -206,7 +206,7 @@ const empty = async( account, tokenaccount) => {
         json: true
       }))
     ],
-    expected: [ { rows: [ { token_id: 0, family: 'antelope', chain: 'Telos', chain_code: '4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11', contract: 'token.seeds', contract_code: '14781000357308952576', symbol: 'SEEDS', active: 0, metadata: '', weight: '0.50000000000000000' }, { token_id: 1, family: 'antelope', chain: 'Telos', chain_code: '4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11', contract: 'token.seeds', contract_code: '14781000357308952576', symbol: 'TESTS', active: 0, metadata: '', weight: '0.00000000000000000' } ], more: false, next_key: '' }, { rows: [ { balance: '5.0000 SEEDS' }, { balance: '0.0000 TESTS' } ], more: false, next_key: '' } ]
+    expected: [ { rows: [ { token_id: 0, chain_code: '4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11', contract_code: '14781000357308952576', symbol: 'SEEDS', active: 1, metadata: '', weight: '0.50000000000000000' }, { token_id: 1, chain_code: '4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11', contract_code: '14781000357308952576', symbol: 'TESTS', active: 1, metadata: '', weight: '0.00000000000000000' } ], more: false, next_key: '' }, { rows: [ { balance: '5.0000 SEEDS' }, { balance: '0.0000 TESTS' } ], more: false, next_key: '' } ]
   })
 
   console.log('add TESTS liquidity')
@@ -353,10 +353,10 @@ const empty = async( account, tokenaccount) => {
     actual: await getTableRows({
       code: oswaps,
       scope: oswaps,
-      table: 'assets',
+      table: 'assetsa',
       json: true
     }),
-    expected: { rows: [ { token_id: 1, family: 'antelope', chain: 'Telos', chain_code: '4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11', contract: 'token.seeds', contract_code: '14781000357308952576', symbol: 'TESTS', active: 0, metadata: '', weight: '1.00000000000000000' } ], more: false, next_key: '' }
+    expected: { rows: [ { token_id: 1, chain_code: '4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11', contract_code: '14781000357308952576', symbol: 'TESTS', active: 1, metadata: '', weight: '1.00000000000000000' } ], more: false, next_key: '' }
   })
 
  

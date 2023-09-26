@@ -42,7 +42,7 @@ bool parse_mod_in(string s) {
 void oswaps::reset() {
   require_auth2(get_self().value, "owner"_n.value);
   {
-    assets tbl(get_self(), get_self().value);
+    assetsa tbl(get_self(), get_self().value);
     auto itr = tbl.begin();
     while (itr != tbl.end()) {
       itr = tbl.erase(itr);
@@ -64,7 +64,6 @@ void oswaps::reset() {
   }
   configs configset(get_self(), get_self().value);
   if(configset.exists()) { configset.remove(); }
-  // clear prep tables
 }
 
 void oswaps::init(name manager, uint64_t nonce_life_msec, string chain) {
@@ -100,7 +99,7 @@ void oswaps::unfreeze(name actor, uint64_t token_id, string symbol) {
 
 uint64_t oswaps::createasseta(name actor, string chain, name contract, symbol_code symbol, string meta) {
   require_auth(actor);
-  assets assettable(get_self(), get_self().value);
+  assetsa assettable(get_self(), get_self().value);
   // TODO parse chain into chain_name, chain_code
   string chain_name = "Telos";
   checksum256 chain_code = telos_chain_id;
@@ -108,13 +107,10 @@ uint64_t oswaps::createasseta(name actor, string chain, name contract, symbol_co
   uint64_t token_id = assettable.available_primary_key();
   assettable.emplace(actor, [&]( auto& s ) {
     s.token_id = token_id;
-    s.family = "antelope"_n;
-    s.chain = chain_name;
     s.chain_code = chain_code;
-    s.contract = contract.to_string();
     s.contract_code = contract.value;
-    s.symbol = symbol.to_string();
-    s.active = false;
+    s.symbol = symbol;
+    s.active = true;
     s.metadata = meta;
     s.weight = 0.0;
   });
@@ -127,7 +123,7 @@ void oswaps::forgetasset(name actor, uint64_t token_id, string memo) {
   auto cfg = configset.get();
   check(actor == cfg.manager, "must be manager");
   require_auth(actor);
-  assets assettable(get_self(), get_self().value);
+  assetsa assettable(get_self(), get_self().value);
   auto a = assettable.require_find(token_id, "unrecog token id");
   assettable.erase(a);
 }  
@@ -137,16 +133,15 @@ void oswaps::withdraw(name account, uint64_t token_id, string amount, float weig
   check(configset.exists(), "not configured.");
   auto cfg = configset.get();
   require_auth(cfg.manager);
-  assets assettable(get_self(), get_self().value);
+  assetsa assettable(get_self(), get_self().value);
   auto a = assettable.require_find(token_id, "unrecog token id");
   // TODO verify chain, family, and contract
-  symbol_code asset_symbol_code = symbol_code(a->symbol);
-  stats stattable(name(a->contract_code), asset_symbol_code.raw());
-  auto st = stattable.require_find(asset_symbol_code.raw(), "can't stat symbol");
+  stats stattable(name(a->contract_code), a->symbol.raw());
+  auto st = stattable.require_find(a->symbol.raw(), "can't stat symbol");
   uint64_t amount64 = amount_from(st->supply.symbol, amount);
   asset qty = asset(amount64, st->supply.symbol);
   accounts accttable(name(a->contract_code), get_self().value);
-  auto ac = accttable.find(symbol_code(a->symbol).raw());
+  auto ac = accttable.find(a->symbol.raw());
   uint64_t bal_before = 0;
   if(ac != accttable.end()) {
     bal_before = ac->balance.amount;
@@ -174,15 +169,14 @@ uint32_t oswaps::addliqprep(name account, uint64_t token_id,
   auto cfg = configset.get();
   cfg.last_nonce += 1;
   configset.set(cfg, get_self());
-  assets assettable(get_self(), get_self().value);
+  assetsa assettable(get_self(), get_self().value);
   auto a = assettable.require_find(token_id, "unrecog token id");
   // TODO verify chain & family
-  symbol_code asset_symbol_code = symbol_code(a->symbol);
-  stats stattable(name(a->contract_code), asset_symbol_code.raw());
-  auto st = stattable.require_find(asset_symbol_code.raw(), "can't stat symbol");
+  stats stattable(name(a->contract_code), a->symbol.raw());
+  auto st = stattable.require_find(a->symbol.raw(), "can't stat symbol");
   uint64_t amount64 = amount_from(st->supply.symbol, amount);
   accounts accttable(name(a->contract_code), get_self().value);
-  auto ac = accttable.find(symbol_code(a->symbol).raw());
+  auto ac = accttable.find(a->symbol.raw());
   uint64_t bal_before = 0;
   if(ac != accttable.end()) {
     bal_before = ac->balance.amount;
@@ -216,15 +210,14 @@ std::vector<int64_t> oswaps::exchangeprep(
   auto cfg = configset.get();
   cfg.last_nonce += 1;
   configset.set(cfg, get_self());
-  assets assettable(get_self(), get_self().value);
+  assetsa assettable(get_self(), get_self().value);
   
   auto ain = assettable.require_find(in_token_id, "unrecog input token id");
-  symbol_code in_asset_symbol_code = symbol_code(ain->symbol);
-  stats in_stattable(name(ain->contract_code), in_asset_symbol_code.raw());
-  auto stin = in_stattable.require_find(in_asset_symbol_code.raw(), "can't stat symbol");
+  stats in_stattable(name(ain->contract_code), ain->symbol.raw());
+  auto stin = in_stattable.require_find(ain->symbol.raw(), "can't stat symbol");
   uint64_t in_amount64 = amount_from(stin->supply.symbol, in_amount);
   accounts in_accttable(name(ain->contract_code), get_self().value);
-  auto acin = in_accttable.find(symbol_code(ain->symbol).raw());
+  auto acin = in_accttable.find(ain->symbol.raw());
   uint64_t in_bal_before = 0;
   if(acin != in_accttable.end()) {
     in_bal_before = acin->balance.amount;
@@ -232,12 +225,11 @@ std::vector<int64_t> oswaps::exchangeprep(
   check(in_bal_before > 0, "zero input balance");
   
   auto aout = assettable.require_find(out_token_id, "unrecog output token id");
-  symbol_code out_asset_symbol_code = symbol_code(aout->symbol);
-  stats out_stattable(name(aout->contract_code), out_asset_symbol_code.raw());
-  auto stout = out_stattable.require_find(out_asset_symbol_code.raw(), "can't stat symbol");
+  stats out_stattable(name(aout->contract_code), aout->symbol.raw());
+  auto stout = out_stattable.require_find(aout->symbol.raw(), "can't stat symbol");
   uint64_t out_amount64 = amount_from(stout->supply.symbol, out_amount);
   accounts out_accttable(name(aout->contract_code), get_self().value);
-  auto acout = out_accttable.find(symbol_code(aout->symbol).raw());
+  auto acout = out_accttable.find(aout->symbol.raw());
   uint64_t out_bal_before = 0;
   if(acout != out_accttable.end()) {
     out_bal_before = acout->balance.amount;
@@ -309,10 +301,10 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
     auto itr = adpreptable.find( memo_nonce );
     if (itr != adpreptable.end()) {
       // accept liquidity addition if valid
-      assets assettable(get_self(), get_self().value);
+      assetsa assettable(get_self(), get_self().value);
       auto a = assettable.require_find(itr->token_id, "unrecog token id");
       // TODO verify chain & family
-      check(a->contract == tkcontract.to_string(), "wrong token contract");
+      check(a->contract_code == tkcontract.value, "wrong token contract");
       uint64_t amt = amount_from(quantity.symbol, itr->amount);
       check(amt == quantity.amount, "transfer qty mismatched to prep");
       assettable.modify(a, same_payer, [&](auto& s) {
@@ -326,15 +318,14 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
       if (ex == expreptable.end()) {
         check(false, "no matching transaction");
       }
-      assets assettable(get_self(), get_self().value);
+      assetsa assettable(get_self(), get_self().value);
       auto ain = assettable.require_find(ex->in_token_id, "unrecog input token id");
-      check(ain->contract == tkcontract.to_string(), "wrong token contract");
-      symbol_code in_asset_symbol_code = symbol_code(ain->symbol);
-      stats in_stattable(name(ain->contract_code), in_asset_symbol_code.raw());
-      auto stin = in_stattable.require_find(in_asset_symbol_code.raw(), "can't stat symbol");
+      check(ain->contract_code == tkcontract.value, "wrong token contract");
+      stats in_stattable(name(ain->contract_code), ain->symbol.raw());
+      auto stin = in_stattable.require_find(ain->symbol.raw(), "can't stat symbol");
       uint64_t in_amount64 = amount_from(stin->supply.symbol, ex->in_amount);
       accounts in_accttable(name(ain->contract_code), get_self().value);
-      auto acin = in_accttable.find(symbol_code(ain->symbol).raw());
+      auto acin = in_accttable.find(ain->symbol.raw());
       uint64_t in_bal_before = 0;
       if(acin != in_accttable.end()) {
         // must back out transfer which just occurred
@@ -343,12 +334,11 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
       check(in_bal_before > 0, "zero input balance");
 
       auto aout = assettable.require_find(ex->out_token_id, "unrecog output token id");
-      symbol_code out_asset_symbol_code = symbol_code(aout->symbol);
-      stats out_stattable(name(aout->contract_code), out_asset_symbol_code.raw());
-      auto stout = out_stattable.require_find(out_asset_symbol_code.raw(), "can't stat symbol");
+      stats out_stattable(name(aout->contract_code), aout->symbol.raw());
+      auto stout = out_stattable.require_find(aout->symbol.raw(), "can't stat symbol");
       uint64_t out_amount64 = amount_from(stout->supply.symbol, ex->out_amount);
       accounts out_accttable(name(aout->contract_code), get_self().value);
-      auto acout = out_accttable.find(symbol_code(aout->symbol).raw());
+      auto acout = out_accttable.find(aout->symbol.raw());
       uint64_t out_bal_before = 0;
       if(acout != out_accttable.end()) {
         out_bal_before = acout->balance.amount;
