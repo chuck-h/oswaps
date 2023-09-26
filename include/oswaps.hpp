@@ -191,6 +191,20 @@ CONTRACT oswaps : public contract {
            name recipient, uint64_t out_token_id, string out_amount,
            string mods, string memo);
 
+      /**
+          * The `ontransfer` action is called whenever any token is transferred to
+          * or from the oswaps contract. (The call is initiated by the 
+          * `require-recipient` function in the token contract.)
+          *
+          * This action examines the memo field to identify a pending liquidity or
+          * exchange event and executes it. If there is no valid pending event
+          * matching the transfer, the transfer is blocked.
+          *
+          * @param from - token sender
+          * @param to - token recipient
+          * @param quantity - the quantity transferred (amount and symbol)
+          * @param memo
+      */
       [[eosio::on_notify("*::transfer")]]
       void ontransfer(name from, name to, eosio::asset quantity, string memo);
 
