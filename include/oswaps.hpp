@@ -96,7 +96,8 @@ CONTRACT oswaps : public contract {
 
       /**
           * The `createasseta` creates an entry in the asset table for an
-          *   antelope family token. If a table entry exists, it is overwritten
+          *   antelope family token. It also creates a liquidity pool token
+          *   LIQxx which will be issued in exchange for additions.
           *   TBD: how to record IBC wrapped token contracts
           *
           * @param actor - an account empowered to set the specified parameter
@@ -190,6 +191,20 @@ CONTRACT oswaps : public contract {
            name sender, uint64_t in_token_id, string in_amount,
            name recipient, uint64_t out_token_id, string out_amount,
            string mods, string memo);
+           
+      /**
+          * Allows `from` account to transfer to `to` account the `quantity` tokens.
+          * One account is debited and the other is credited with quantity tokens.
+          *
+          * @param from - the account to transfer from,
+          * @param to - the account to be transferred to,
+          * @param quantity - the quantity of tokens to be transferred,
+          * @param memo - the memo string to accompany the transaction.
+          */
+         ACTION transfer( const name&    from,
+                               const name&    to,
+                               const asset&   quantity,
+                               const string&  memo );         
 
       /**
           * The `ontransfer` action is called whenever any token is transferred to

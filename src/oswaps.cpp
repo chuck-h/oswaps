@@ -47,6 +47,7 @@ void oswaps::reset() {
     while (itr != tbl.end()) {
       itr = tbl.erase(itr);
     }
+    // TODO destroy LIQ tokens
   }
   {
     adpreps tbl(get_self(), get_self().value);
@@ -114,6 +115,7 @@ uint64_t oswaps::createasseta(name actor, string chain, name contract, symbol_co
     s.metadata = meta;
     s.weight = 0.0;
   });
+  // create LIQ token
   return token_id;
 }
 
@@ -126,6 +128,7 @@ void oswaps::forgetasset(name actor, uint64_t token_id, string memo) {
   assetsa assettable(get_self(), get_self().value);
   auto a = assettable.require_find(token_id, "unrecog token id");
   assettable.erase(a);
+  // TODO destroy LIQ token
 }  
 
 void oswaps::withdraw(name account, uint64_t token_id, string amount, float weight) {
@@ -154,7 +157,7 @@ void oswaps::withdraw(name account, uint64_t token_id, string amount, float weig
   assettable.modify(a, same_payer, [&](auto& s) {
     s.weight = new_weight;
   });
-
+  // TODO burn LIQ tokens
   action (
     permission_level{get_self(), "active"_n},
     name(a->contract_code),
@@ -280,6 +283,11 @@ std::vector<int64_t> oswaps::exchangeprep(
   return rv;
 }
 
+void oswaps::transfer( const name& from, const name& to, const asset& quantity,
+                       const string&  memo ) {
+  // TODO impement standard transfer action for LIQ tokens
+}
+ 
 void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) {
     if (from == get_self()) return;
     check(to == get_self(), "This transfer is not for oswaps");
@@ -325,6 +333,7 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
         s.weight = itr->weight;
       });
       adpreptable.erase(itr);
+      // TODO issue LIQ tokens to `from` account
     } else {
       expreps expreptable(get_self(), get_self().value);
       // purge stale exprep table entries
