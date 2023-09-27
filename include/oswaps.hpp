@@ -249,6 +249,7 @@ CONTRACT oswaps : public contract {
         name manager;
         uint64_t nonce_life_msec;
         checksum256 chain_id;
+        uint64_t last_token_id;
         uint32_t last_nonce;
       } config_row;
 
