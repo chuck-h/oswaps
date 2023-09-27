@@ -345,6 +345,15 @@ const empty = async( account, tokenaccount) => {
     expected: [ { rows: [], more: false, next_key: '' }, { rows: [], more: false, next_key: '' } ]
   })
 
+  console.log("check for liquidity tokens")
+  assert({
+    given: 'check scope',
+    should: 'see tokens',
+    actual: await get_scope(oswaps),
+    expected: { rows: [ { code: 'oswapper', scope: '......22e54og', table: 'stat', payer: 'oswapper', count: 1 }, { code: 'oswapper', scope: '......23e54og', table: 'stat', payer: 'oswapper', count: 1 }, { code: 'oswapper', scope: 'oswapper', table: 'assetsa', payer: 'seedsuseraaa', count: 4 }, { code: 'oswapper', scope: 'oswapper', table: 'configs', payer: 'oswapper', count: 1 } ], more: '' }
+  })
+
+
   console.log('add TESTS liquidity and expire')
   let actionProperlyBlocked = true
   try {

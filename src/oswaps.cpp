@@ -42,7 +42,8 @@ string sym_from_id(uint64_t token_id, string prefix) {
   if (token_id < 26) {
     return prefix + string(1, 'A' + token_id);
   } else {
-    return sym_from_id(token_id%26, prefix + string(1,'A' + token_id/26 - 1));
+    prefix = sym_from_id(token_id/26 - 1, prefix);
+    return sym_from_id(token_id%26, prefix);
   }
 }
   
@@ -131,6 +132,9 @@ uint64_t oswaps::createasseta(name actor, string chain, name contract, symbol_co
   auto ast = astattable.require_find(symbol.raw(), "can't stat symbol");
   auto liq_sym_code = symbol_code(sym_from_id(cfg.last_token_id, "LIQ"));
   auto liq_sym = eosio::symbol(liq_sym_code, ast->supply.symbol.precision());
+  printf("liq sym code id %llu %s %s", cfg.last_token_id,
+            liq_sym_code.to_string().c_str(),
+            name(liq_sym_code.raw()).to_string().c_str());
   stats lstattable(get_self(), liq_sym_code.raw());
   auto existing = lstattable.find(liq_sym_code.raw());
   check( existing == lstattable.end(), "liquidity token already exists");
