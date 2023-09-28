@@ -62,6 +62,16 @@ CONTRACT oswaps : public contract {
           * The `reset` action executed by the oswaps contract account deletes all table data
       */
       ACTION reset();
+ 
+      /**
+          * This action clears the `accounts` table for a particular account. All
+          * token balances in the account are erased.
+          *
+          * @param account - account
+          *
+          * @pre Transaction must have the contract account owner authority 
+          */
+         ACTION resetacct( const name& account );
 
       /**
           * The one-time `init` action executed by the oswaps contract account records
@@ -311,6 +321,9 @@ CONTRACT oswaps : public contract {
                < "byexpiration"_n,
                  const_mem_fun<exprep, uint64_t, &exprep::by_expiration > >
                > expreps;
+
+      void sub_balance( const name& owner, const asset& value );
+      void add_balance( const name& owner, const asset& value, const name& ram_payer );
 };
 
 

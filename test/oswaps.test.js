@@ -83,6 +83,9 @@ const empty = async( account, tokenaccount) => {
 
   console.log('reset')
   await contracts.oswaps.reset( { authorization: `${oswaps}@owner` })
+  console.log('reset liq token accounts')
+  await contracts.oswaps.resetacct( owner, { authorization: `${oswaps}@owner` })
+  await contracts.oswaps.resetacct( firstuser, { authorization: `${oswaps}@owner` })
   console.log('sending oswaps token balances back to owner')
   await empty(oswaps, accounts.token)
   await empty(oswaps, accounts.testtoken)
@@ -177,14 +180,20 @@ const empty = async( account, tokenaccount) => {
 
   assert({
     given: 'send tokens',
-    should: 'add liquidity',
-    actual: (await getTableRows({
+    should: 'add liquidity & issue liq tokens',
+    actual: [ (await getTableRows({
       code: token,
       scope: oswaps,
       table: 'accounts',
       json: true
     })).rows[0],
-    expected: { balance: '10.0000 SEEDS' }
+    (await getTableRows({
+      code: oswaps,
+      scope: firstuser,
+      table: 'accounts',
+      json: true
+    })) ],
+    expected: [ { balance: '10.0000 SEEDS' }, { rows: [ { balance: '10.0000 LIQB' } ], more: false, next_key: '' } ]
   })
 
   console.log('withdraw liquidity')
@@ -347,10 +356,21 @@ const empty = async( account, tokenaccount) => {
 
   console.log("check for liquidity tokens")
   assert({
-    given: 'check scope',
+    given: 'check balances',
     should: 'see tokens',
-    actual: await get_scope(oswaps),
-    expected: { rows: [ { code: 'oswapper', scope: '......22e54og', table: 'stat', payer: 'oswapper', count: 1 }, { code: 'oswapper', scope: '......23e54og', table: 'stat', payer: 'oswapper', count: 1 }, { code: 'oswapper', scope: 'oswapper', table: 'assetsa', payer: 'seedsuseraaa', count: 4 }, { code: 'oswapper', scope: 'oswapper', table: 'configs', payer: 'oswapper', count: 1 } ], more: '' }
+    actual: [ (await getTableRows({
+      code: oswaps,
+      scope: owner,
+      table: 'accounts',
+      json: true
+    })),
+    (await getTableRows({
+      code: oswaps,
+      scope: firstuser,
+      table: 'accounts',
+      json: true
+    })) ],
+    expected: [ { rows: [ { balance: '10.0000 LIQC' } ], more: false, next_key: '' }, { rows: [ { balance: '5.0000 LIQB' } ], more: false, next_key: '' } ]
   })
 
 
