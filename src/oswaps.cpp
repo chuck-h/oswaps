@@ -38,7 +38,15 @@ bool parse_mod_in(string s) {
   return exact_in;
 } 
   
-
+string sym_from_id(uint64_t token_id, string prefix) {
+  if (token_id < 26) {
+    return prefix + string(1, 'A' + token_id);
+  } else {
+    prefix = sym_from_id(token_id/26 - 1, prefix);
+    return sym_from_id(token_id%26, prefix);
+  }
+}
+  
 void oswaps::reset() {
   require_auth2(get_self().value, "owner"_n.value);
   {
@@ -47,6 +55,7 @@ void oswaps::reset() {
     while (itr != tbl.end()) {
       itr = tbl.erase(itr);
     }
+    // TODO destroy LIQ tokens
   }
   {
     adpreps tbl(get_self(), get_self().value);
@@ -64,6 +73,16 @@ void oswaps::reset() {
   }
   configs configset(get_self(), get_self().value);
   if(configset.exists()) { configset.remove(); }
+}
+
+void oswaps::resetacct( const name& account )
+{
+  require_auth2( get_self().value, "owner"_n.value );
+    accounts tbl(get_self(),account.value);
+    auto itr = tbl.begin();
+    while (itr != tbl.end()) {
+      itr = tbl.erase(itr);
+    }
 }
 
 void oswaps::init(name manager, uint64_t nonce_life_msec, string chain) {
@@ -85,6 +104,7 @@ void oswaps::init(name manager, uint64_t nonce_life_msec, string chain) {
   cfg.nonce_life_msec = nonce_life_msec;
   if (!reconfig) {
     cfg.last_nonce = 1111; // >42 (magic #)
+    cfg.last_token_id = 0;
   }
   configset.set(cfg, get_self());
 }
@@ -104,9 +124,12 @@ uint64_t oswaps::createasseta(name actor, string chain, name contract, symbol_co
   string chain_name = "Telos";
   checksum256 chain_code = telos_chain_id;
   check(chain == chain_name, "currently only Telos chain supported");
-  uint64_t token_id = assettable.available_primary_key();
+  configs configset(get_self(), get_self().value);
+  auto cfg = configset.get();
+  cfg.last_token_id += 1;
+  configset.set(cfg, get_self());
   assettable.emplace(actor, [&]( auto& s ) {
-    s.token_id = token_id;
+    s.token_id = cfg.last_token_id;
     s.chain_code = chain_code;
     s.contract_code = contract.value;
     s.symbol = symbol;
@@ -114,7 +137,23 @@ uint64_t oswaps::createasseta(name actor, string chain, name contract, symbol_co
     s.metadata = meta;
     s.weight = 0.0;
   });
-  return token_id;
+  // create LIQ token with correct precision
+  stats astattable(contract, symbol.raw());
+  auto ast = astattable.require_find(symbol.raw(), "can't stat symbol");
+  auto liq_sym_code = symbol_code(sym_from_id(cfg.last_token_id, "LIQ"));
+  auto liq_sym = eosio::symbol(liq_sym_code, ast->supply.symbol.precision());
+  printf("liq sym code id %llu %s %s", cfg.last_token_id,
+            liq_sym_code.to_string().c_str(),
+            name(liq_sym_code.raw()).to_string().c_str());
+  stats lstattable(get_self(), liq_sym_code.raw());
+  auto existing = lstattable.find(liq_sym_code.raw());
+  check( existing == lstattable.end(), "liquidity token already exists");
+  lstattable.emplace( get_self(), [&]( auto& s ) {
+    s.supply.symbol = liq_sym;
+    s.max_supply    = asset(asset::max_amount, liq_sym);
+    s.issuer        = get_self();
+  });  
+  return cfg.last_token_id;
 }
 
 void oswaps::forgetasset(name actor, uint64_t token_id, string memo) {
@@ -126,6 +165,14 @@ void oswaps::forgetasset(name actor, uint64_t token_id, string memo) {
   assetsa assettable(get_self(), get_self().value);
   auto a = assettable.require_find(token_id, "unrecog token id");
   assettable.erase(a);
+  // should we check for zero balance before destroying LIQ token?
+  auto liq_sym_code = symbol_code(sym_from_id(token_id, "LIQ"));
+  stats lstattable(get_self(), liq_sym_code.raw());
+  auto lst = lstattable.begin();
+  while ( lst != lstattable.end()) {
+    lst = lstattable.erase(lst);
+  }
+  // accounts table has stranded ram & data which could create weirdness
 }  
 
 void oswaps::withdraw(name account, uint64_t token_id, string amount, float weight) {
@@ -153,6 +200,16 @@ void oswaps::withdraw(name account, uint64_t token_id, string amount, float weig
   }
   assettable.modify(a, same_payer, [&](auto& s) {
     s.weight = new_weight;
+  });
+  // burn LIQ tokens
+  auto liq_sym_code = symbol_code(sym_from_id(token_id, "LIQ"));
+  stats lstatstable( get_self(), liq_sym_code.raw() );
+  const auto& lst = lstatstable.get( liq_sym_code.raw() );
+  asset lqty = qty;
+  lqty.symbol = symbol(liq_sym_code, qty.symbol.precision());
+  sub_balance( account, lqty );
+  lstatstable.modify( lst, same_payer, [&]( auto& s ) {
+    s.supply -= lqty;
   });
 
   action (
@@ -280,6 +337,12 @@ std::vector<int64_t> oswaps::exchangeprep(
   return rv;
 }
 
+void oswaps::transfer( const name& from, const name& to, const asset& quantity,
+                       const string&  memo ) {
+  // TODO impement standard transfer action for LIQ tokens
+  check(false, "liquidity receipt token transfers not implemented");
+}
+ 
 void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) {
     if (from == get_self()) return;
     check(to == get_self(), "This transfer is not for oswaps");
@@ -311,10 +374,9 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
         break;
       }
     }
-    // if in adprep table
+    // if in adprep table, accept addition of liquidity
     auto itr = adpreptable.find( memo_nonce );
     if (itr != adpreptable.end()) {
-      // accept liquidity addition if valid
       assetsa assettable(get_self(), get_self().value);
       auto a = assettable.require_find(itr->token_id, "unrecog token id");
       // TODO verify chain & family
@@ -325,6 +387,17 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
         s.weight = itr->weight;
       });
       adpreptable.erase(itr);
+      // issue LIQ tokens to `from` account
+      auto liq_sym_code = symbol_code(sym_from_id(itr->token_id, "LIQ"));
+      stats lstatstable( get_self(), liq_sym_code.raw() );
+      const auto& lst = lstatstable.get( liq_sym_code.raw() );
+      asset lqty = quantity;
+      lqty.symbol = symbol(liq_sym_code, quantity.symbol.precision());
+      add_balance( from, lqty, get_self() );
+      lstatstable.modify( lst, same_payer, [&]( auto& s ) {
+        s.supply += lqty;
+      });
+      
     } else {
       expreps expreptable(get_self(), get_self().value);
       // purge stale exprep table entries
@@ -418,6 +491,31 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
     }
 }
 
+void oswaps::sub_balance( const name& owner, const asset& value ) {
+   accounts from_acnts( get_self(), owner.value );
+
+   const auto& from = from_acnts.get( value.symbol.code().raw(), "no balance object found" );
+   check( from.balance.amount >= value.amount, "overdrawn balance" );
+
+   from_acnts.modify( from, same_payer, [&]( auto& a ) {
+         a.balance -= value;
+      });
+}
+
+void oswaps::add_balance( const name& owner, const asset& value, const name& ram_payer )
+{
+   accounts to_acnts( get_self(), owner.value );
+   auto to = to_acnts.find( value.symbol.code().raw() );
+   if( to == to_acnts.end() ) {
+      to_acnts.emplace( ram_payer, [&]( auto& a ){
+        a.balance = value;
+      });
+   } else {
+      to_acnts.modify( to, same_payer, [&]( auto& a ) {
+        a.balance += value;
+      });
+   }
+}
 
   
 

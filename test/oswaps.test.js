@@ -83,6 +83,9 @@ const empty = async( account, tokenaccount) => {
 
   console.log('reset')
   await contracts.oswaps.reset( { authorization: `${oswaps}@owner` })
+  console.log('reset liq token accounts')
+  await contracts.oswaps.resetacct( owner, { authorization: `${oswaps}@owner` })
+  await contracts.oswaps.resetacct( firstuser, { authorization: `${oswaps}@owner` })
   console.log('sending oswaps token balances back to owner')
   await empty(oswaps, accounts.token)
   await empty(oswaps, accounts.testtoken)
@@ -107,7 +110,7 @@ const empty = async( account, tokenaccount) => {
       table: 'configs',
       json: true
     }),
-    expected: { rows: [ { manager: 'seedsuseraaa', nonce_life_msec: 10000, chain_id: '4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11', last_nonce: 1111 } ], more: false, next_key: '' }
+    expected: { rows: [ { manager: 'seedsuseraaa', nonce_life_msec: 10000, chain_id: '4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11', last_token_id: 0, last_nonce: 1111 } ], more: false, next_key: '' }
   })
 
   console.log('reconfigure')
@@ -123,7 +126,7 @@ const empty = async( account, tokenaccount) => {
       table: 'configs',
       json: true
     }),
-    expected: { rows: [ { manager: 'seedsuserbbb', nonce_life_msec: expirems, chain_id: '4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11', last_nonce: 1111 } ], more: false, next_key: '' }
+    expected: { rows: [ { manager: 'seedsuserbbb', nonce_life_msec: 1000, chain_id: '4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11', last_token_id: 0, last_nonce: 1111 } ], more: false, next_key: '' }
     
   })
 
@@ -145,14 +148,14 @@ const empty = async( account, tokenaccount) => {
       table: 'assetsa',
       json: true
     }),
-    expected: { rows: [ { token_id: 0, chain_code: '4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11', contract_code: '14781000357308952576', symbol: 'SEEDS', active: 1, metadata: '', weight: '0.00000000000000000' }, { token_id: 1, chain_code: '4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11', contract_code: '14781000357308952576', symbol: 'TESTS', active: 1, metadata: '', weight: '0.00000000000000000' } ], more: false, next_key: '' }
+    expected: { rows: [ { token_id: 1, chain_code: '4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11', contract_code: '14781000357308952576', symbol: 'SEEDS', active: 1, metadata: '', weight: '0.00000000000000000' }, { token_id: 2, chain_code: '4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11', contract_code: '14781000357308952576', symbol: 'TESTS', active: 1, metadata: '', weight: '0.00000000000000000' } ], more: false, next_key: '' }
     
   })
 
   console.log('add liquidity 1 - prep')
   // TBD this expiration computation doesn't make sense, but works.
   var exptimestamp = (new Date(500*Math.trunc(Date.now()/500) + expirems + 500)).toISOString().slice(0,-1);
-  res = await contracts.oswaps.addliqprep( firstuser, 0, "10.0000 SEEDS", 1.00, { authorization: `${firstuser}@active` })
+  res = await contracts.oswaps.addliqprep( firstuser, 1, "10.0000 SEEDS", 1.00, { authorization: `${firstuser}@active` })
   rvbuf = Buffer.from(
        res.processed.action_traces[0].return_value_hex_data, 'hex'
      )
@@ -168,7 +171,7 @@ const empty = async( account, tokenaccount) => {
       table: 'adpreps',
       json: true
     })),
-    expected: { rows: [ { nonce: rv, expires: exptimestamp, account: 'seedsuseraaa', token_id: 0, amount: '10.0000 SEEDS', weight: '1.00000000000000000' } ], more: false, next_key: '' }
+    expected: { rows: [ { nonce: rv, expires: exptimestamp, account: 'seedsuseraaa', token_id: 1, amount: '10.0000 SEEDS', weight: '1.00000000000000000' } ], more: false, next_key: '' }
   })
 
   console.log('add liquidity 2 - transfer')
@@ -177,19 +180,25 @@ const empty = async( account, tokenaccount) => {
 
   assert({
     given: 'send tokens',
-    should: 'add liquidity',
-    actual: (await getTableRows({
+    should: 'add liquidity & issue liq tokens',
+    actual: [ (await getTableRows({
       code: token,
       scope: oswaps,
       table: 'accounts',
       json: true
-    })),
-    expected: { rows: [ { balance: '10.0000 SEEDS' }, { balance: '0.0000 TESTS' } ], more: false, next_key: '' }
+    })).rows[0],
+    (await getTableRows({
+      code: oswaps,
+      scope: firstuser,
+      table: 'accounts',
+      json: true
+    })) ],
+    expected: [ { balance: '10.0000 SEEDS' }, { rows: [ { balance: '10.0000 LIQB' } ], more: false, next_key: '' } ]
   })
 
   console.log('withdraw liquidity')
 
-  await contracts.oswaps.withdraw( firstuser, 0, "5.0000 SEEDS", 0.00, { authorization: `${seconduser}@active` })
+  await contracts.oswaps.withdraw( firstuser, 1, "5.0000 SEEDS", 0.00, { authorization: `${seconduser}@active` })
 
   assert({
     given: 'withdraw tokens',
@@ -205,15 +214,15 @@ const empty = async( account, tokenaccount) => {
         scope: oswaps,
         table: 'accounts',
         json: true
-      }))
+      })).rows[0]
     ],
-    expected: [ { rows: [ { token_id: 0, chain_code: '4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11', contract_code: '14781000357308952576', symbol: 'SEEDS', active: 1, metadata: '', weight: '0.50000000000000000' }, { token_id: 1, chain_code: '4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11', contract_code: '14781000357308952576', symbol: 'TESTS', active: 1, metadata: '', weight: '0.00000000000000000' } ], more: false, next_key: '' }, { rows: [ { balance: '5.0000 SEEDS' }, { balance: '0.0000 TESTS' } ], more: false, next_key: '' } ]
+    expected: [ { rows: [ { token_id: 1, chain_code: '4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11', contract_code: '14781000357308952576', symbol: 'SEEDS', active: 1, metadata: '', weight: '0.50000000000000000' }, { token_id: 2, chain_code: '4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11', contract_code: '14781000357308952576', symbol: 'TESTS', active: 1, metadata: '', weight: '0.00000000000000000' } ], more: false, next_key: '' }, { balance: '5.0000 SEEDS' } ]
   })
 
   console.log('add TESTS liquidity')
   // TBD this expiration computation doesn't make sense, but works.
   exptimestamp = (new Date(500*Math.trunc(Date.now()/500) + expirems + 500)).toISOString().slice(0,-1);
-  res = await contracts.oswaps.addliqprep( firstuser, 1, "10.0000 TESTS", 1.00, { authorization: `${firstuser}@active` })
+  res = await contracts.oswaps.addliqprep( firstuser, 2, "10.0000 TESTS", 1.00, { authorization: `${firstuser}@active` })
   rvbuf = Buffer.from(
        res.processed.action_traces[0].return_value_hex_data, 'hex'
      )
@@ -237,8 +246,8 @@ const empty = async( account, tokenaccount) => {
   console.log('exchange 1 - prep')
   // TBD this expiration computation doesn't make sense, but works.
   exptimestamp = (new Date(500*Math.trunc(Date.now()/500) + expirems + 500)).toISOString().slice(0,-1);
-  res = await contracts.oswaps.exchangeprep( owner, 1, "0.2500 TESTS",
-       seconduser, 0, "0.2000 SEEDS", '{"exact":"out"}', "my memo", { authorization: `${owner}@active` })
+  res = await contracts.oswaps.exchangeprep( owner, 2, "0.2500 TESTS",
+       seconduser, 1, "0.2000 SEEDS", '{"exact":"out"}', "my memo", { authorization: `${owner}@active` })
   rvbuf = Buffer.from(
        res.processed.action_traces[0].return_value_hex_data, 'hex'
      )
@@ -255,7 +264,7 @@ const empty = async( account, tokenaccount) => {
       table: 'expreps',
       json: true
     })),
-    expected: { rows: [ { nonce: 1114, expires: exptimestamp, sender: 'owner', in_token_id: 1, in_amount: '0.2500 TESTS', recipient: 'seedsuserbbb', out_token_id: 0, out_amount: '0.2000 SEEDS', mods: '{"exact":"out"}', memo: 'my memo' } ], more: false, next_key: '' }
+    expected: { rows: [ { nonce: 1114, expires: exptimestamp, sender: 'owner', in_token_id: 2, in_amount: '0.2500 TESTS', recipient: 'seedsuserbbb', out_token_id: 1, out_amount: '0.2000 SEEDS', mods: '{"exact":"out"}', memo: 'my memo' } ], more: false, next_key: '' }
   })
   
   console.log('exchange 2 - transfer')
@@ -283,8 +292,8 @@ const empty = async( account, tokenaccount) => {
   console.log('exchange 3 - prep')
   // TBD this expiration computation doesn't make sense, but works.
   exptimestamp = (new Date(500*Math.trunc(Date.now()/500) + expirems + 500)).toISOString().slice(0,-1);
-  res = await contracts.oswaps.exchangeprep( owner, 1, "0.2500 TESTS",
-       seconduser, 0, "0.2000 SEEDS", '{"exact":"in"}', "my memo", { authorization: `${owner}@active` })
+  res = await contracts.oswaps.exchangeprep( owner, 2, "0.2500 TESTS",
+       seconduser, 1, "0.2000 SEEDS", '{"exact":"in"}', "my memo", { authorization: `${owner}@active` })
   rvbuf = Buffer.from(
        res.processed.action_traces[0].return_value_hex_data, 'hex'
      )
@@ -301,7 +310,7 @@ const empty = async( account, tokenaccount) => {
       table: 'expreps',
       json: true
     })),
-    expected: { rows: [ { nonce: 1115, expires: exptimestamp, sender: 'owner', in_token_id: 1, in_amount: '0.2500 TESTS', recipient: 'seedsuserbbb', out_token_id: 0, out_amount: '0.2000 SEEDS', mods: '{"exact":"in"}', memo: 'my memo' } ], more: false, next_key: '' }
+    expected: { rows: [ { nonce: 1115, expires: exptimestamp, sender: 'owner', in_token_id: 2, in_amount: '0.2500 TESTS', recipient: 'seedsuserbbb', out_token_id: 1, out_amount: '0.2000 SEEDS', mods: '{"exact":"in"}', memo: 'my memo' } ], more: false, next_key: '' }
   })
   
   console.log('exchange 4 - transfer')
@@ -345,12 +354,32 @@ const empty = async( account, tokenaccount) => {
     expected: [ { rows: [], more: false, next_key: '' }, { rows: [], more: false, next_key: '' } ]
   })
 
+  console.log("check for liquidity tokens")
+  assert({
+    given: 'check balances',
+    should: 'see tokens',
+    actual: [ (await getTableRows({
+      code: oswaps,
+      scope: owner,
+      table: 'accounts',
+      json: true
+    })),
+    (await getTableRows({
+      code: oswaps,
+      scope: firstuser,
+      table: 'accounts',
+      json: true
+    })) ],
+    expected: [ { rows: [ { balance: '10.0000 LIQC' } ], more: false, next_key: '' }, { rows: [ { balance: '5.0000 LIQB' } ], more: false, next_key: '' } ]
+  })
+
+
   console.log('add TESTS liquidity and expire')
   let actionProperlyBlocked = true
   try {
     // TBD this expiration computation doesn't make sense, but works.
     exptimestamp = (new Date(500*Math.trunc(Date.now()/500) + expirems + 500)).toISOString().slice(0,-1);
-    res = await contracts.oswaps.addliqprep( firstuser, 1, "10.0000 TESTS", 1.00, { authorization: `${firstuser}@active` })
+    res = await contracts.oswaps.addliqprep( firstuser, 2, "10.0000 TESTS", 1.00, { authorization: `${firstuser}@active` })
     rvbuf = Buffer.from(
          res.processed.action_traces[0].return_value_hex_data, 'hex'
        )
@@ -378,8 +407,8 @@ const empty = async( account, tokenaccount) => {
   try {
     // TBD this expiration computation doesn't make sense, but works.
     exptimestamp = (new Date(500*Math.trunc(Date.now()/500) + expirems + 500)).toISOString().slice(0,-1);
-    res = await contracts.oswaps.exchangeprep( owner, 1, "0.2500 TESTS",
-         seconduser, 0, "0.2000 SEEDS", '{"exact":"out"}', "my memo", { authorization: `${owner}@active` })
+    res = await contracts.oswaps.exchangeprep( owner, 2, "0.2500 TESTS",
+         seconduser, 1, "0.2000 SEEDS", '{"exact":"out"}', "my memo", { authorization: `${owner}@active` })
     rvbuf = Buffer.from(
          res.processed.action_traces[0].return_value_hex_data, 'hex'
        )
@@ -422,7 +451,7 @@ const empty = async( account, tokenaccount) => {
   
   
   console.log("forget SEEDS asset")
-  await contracts.oswaps.forgetasset( seconduser, 0, "removing SEEDS",
+  await contracts.oswaps.forgetasset( seconduser, 1, "removing SEEDS",
        { authorization: `${seconduser}@active` })  
   assert({
     given: 'read asset table',
@@ -433,7 +462,23 @@ const empty = async( account, tokenaccount) => {
       table: 'assetsa',
       json: true
     }),
-    expected: { rows: [ { token_id: 1, chain_code: '4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11', contract_code: '14781000357308952576', symbol: 'TESTS', active: 1, metadata: '', weight: '1.00000000000000000' } ], more: false, next_key: '' }
+    expected: { rows: [ { token_id: 2, chain_code: '4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11', contract_code: '14781000357308952576', symbol: 'TESTS', active: 1, metadata: '', weight: '1.00000000000000000' } ], more: false, next_key: '' }
+  })
+
+  
+  console.log("forget TESTS asset")
+  await contracts.oswaps.forgetasset( seconduser, 2, "removing TESTS",
+       { authorization: `${seconduser}@active` })  
+  assert({
+    given: 'read asset table',
+    should: 'be no entries',
+    actual: await getTableRows({
+      code: oswaps,
+      scope: oswaps,
+      table: 'assetsa',
+      json: true
+    }),
+    expected: { rows: [ ], more: false, next_key: '' }
   })
 
  
