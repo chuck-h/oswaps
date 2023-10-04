@@ -40,7 +40,13 @@ npm install
 
 get DUNES from `https://github.com/AntelopeIO/DUNES` and follow install process in README
 
-Upgrade nodejs version in the DUNES container `https://docs.npmjs.com/downloading-and-installing-node-js-and-npm`. (The js test scripts need a newer version of nodejs than is shipped with the standard DUNES container.)
+Upgrade nodejs version in the DUNES container `https://docs.npmjs.com/downloading-and-installing-node-js-and-npm`. (The js test scripts need a newer version of nodejs than is shipped with the standard DUNES container.) The below sequence gives a deprecation warning but works (Oct 2023).
+```
+ dune -- cp /host`pwd`/nodesource_setup.sh .
+ dune -- bash nodesource_setup.sh
+ dune -- apt-get install nodejs
+```
+
 ```
 dune --start mynode
 dune --bootstrap-system
