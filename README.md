@@ -50,6 +50,7 @@ Upgrade nodejs version in the DUNES container `https://docs.npmjs.com/downloadin
 ```
 dune --start mynode
 dune --bootstrap-system
+dune --activate-feature ACTION_RETURN_VALUE
 dune --create-account owner eosio EOS6MRyAjQq8ud7hVNYcfnVPJqcVpscN5So8BhtHuGYqET5GDW5CV 5KQwrPbwdL6PhXujxW37FSSQZ1JiwsST4cqQzDeyXtP79zkvFD3
 ```
 You may want to export this "fresh" test node container for reimport as a clean test environment
