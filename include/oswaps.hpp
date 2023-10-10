@@ -267,7 +267,7 @@ CONTRACT oswaps : public contract {
       TABLE assettypea { // single table, scoped by contract account name
         uint64_t token_id;
         checksum256 chain_code;
-        uint64_t contract_code;
+        name contract_name;
         symbol_code symbol;
         bool active;
         string metadata;

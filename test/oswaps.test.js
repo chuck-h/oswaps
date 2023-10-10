@@ -148,7 +148,7 @@ const empty = async( account, tokenaccount) => {
       table: 'assetsa',
       json: true
     }),
-    expected: { rows: [ { token_id: 1, chain_code: '4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11', contract_code: '14781000357308952576', symbol: 'SEEDS', active: 1, metadata: '', weight: '0.00000000000000000' }, { token_id: 2, chain_code: '4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11', contract_code: '14781000357308952576', symbol: 'TESTS', active: 1, metadata: '', weight: '0.00000000000000000' } ], more: false, next_key: '' }
+    expected: { rows: [ { token_id: 1, chain_code: '4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11', contract_name: 'token.seeds', symbol: 'SEEDS', active: 1, metadata: '', weight: '0.00000000000000000' }, { token_id: 2, chain_code: '4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11', contract_name: 'token.seeds', symbol: 'TESTS', active: 1, metadata: '', weight: '0.00000000000000000' } ], more: false, next_key: '' }
     
   })
 
@@ -216,7 +216,7 @@ const empty = async( account, tokenaccount) => {
         json: true
       })).rows[0]
     ],
-    expected: [ { rows: [ { token_id: 1, chain_code: '4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11', contract_code: '14781000357308952576', symbol: 'SEEDS', active: 1, metadata: '', weight: '0.50000000000000000' }, { token_id: 2, chain_code: '4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11', contract_code: '14781000357308952576', symbol: 'TESTS', active: 1, metadata: '', weight: '0.00000000000000000' } ], more: false, next_key: '' }, { balance: '5.0000 SEEDS' } ]
+    expected: [ { rows: [ { token_id: 1, chain_code: '4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11', contract_name: 'token.seeds', symbol: 'SEEDS', active: 1, metadata: '', weight: '0.50000000000000000' }, { token_id: 2, chain_code: '4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11', contract_name: 'token.seeds', symbol: 'TESTS', active: 1, metadata: '', weight: '0.00000000000000000' } ], more: false, next_key: '' }, { balance: '5.0000 SEEDS' } ]
   })
 
   console.log('add TESTS liquidity')
@@ -462,7 +462,7 @@ const empty = async( account, tokenaccount) => {
       table: 'assetsa',
       json: true
     }),
-    expected: { rows: [ { token_id: 2, chain_code: '4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11', contract_code: '14781000357308952576', symbol: 'TESTS', active: 1, metadata: '', weight: '1.00000000000000000' } ], more: false, next_key: '' }
+    expected: { rows: [ { token_id: 2, chain_code: '4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11', contract_name: 'token.seeds', symbol: 'TESTS', active: 1, metadata: '', weight: '1.00000000000000000' } ], more: false, next_key: '' }
   })
 
   
