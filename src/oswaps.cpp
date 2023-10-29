@@ -119,6 +119,7 @@ void oswaps::unfreeze(name actor, uint64_t token_id, string symbol) {
 
 uint64_t oswaps::createasseta(name actor, string chain, name contract, symbol_code symbol, string meta) {
   require_auth(actor);
+  check(contract != get_self(), "asset contract cannot be oswaps");
   assetsa assettable(get_self(), get_self().value);
   // TODO parse chain into chain_name, chain_code
   string chain_name = "Telos";
@@ -347,8 +348,29 @@ std::vector<int64_t> oswaps::exchangeprep(
 
 void oswaps::transfer( const name& from, const name& to, const asset& quantity,
                        const string&  memo ) {
-  // TODO impement standard transfer action for LIQ tokens
-  check(false, "liquidity receipt token transfers not implemented");
+  // implement eosio.token transfer action for LIQ tokens, but restrict p2p trading
+    check( from != to, "cannot transfer to self" );
+    // should this no-p2p restriction be under manager config control?
+    check( from == get_self() || to == get_self(), "oswaps token transfers must be to/from contract");
+    require_auth( from );
+    check( is_account( to ), "to account does not exist");
+    auto sym = quantity.symbol.code();
+    stats statstable( get_self(), sym.raw() );
+    const auto& st = statstable.get( sym.raw() );
+
+    // note that require_recipient does not self-notify the oswaps contract
+    require_recipient( from );
+    require_recipient( to );
+
+    check( quantity.is_valid(), "invalid quantity" );
+    check( quantity.amount >= 0, "transfer quantity is negative" ); // 0 qty => open account
+    check( quantity.symbol == st.supply.symbol, "symbol precision mismatch" );
+    check( memo.size() <= 256, "memo has more than 256 bytes" );
+
+    auto payer = has_auth( to ) ? to : from;
+
+    sub_balance( from, quantity );
+    add_balance( to, quantity, payer );
 }
  
 void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) {

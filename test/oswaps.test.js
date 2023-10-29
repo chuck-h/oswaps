@@ -85,11 +85,13 @@ const empty = async( account, tokenaccount) => {
   await contracts.oswaps.reset( { authorization: `${oswaps}@owner` })
   console.log('reset liq token accounts')
   await contracts.oswaps.resetacct( owner, { authorization: `${oswaps}@owner` })
+  await contracts.oswaps.resetacct( oswaps, { authorization: `${oswaps}@owner` })
   await contracts.oswaps.resetacct( firstuser, { authorization: `${oswaps}@owner` })
   console.log('sending oswaps token balances back to owner')
   await empty(oswaps, accounts.token)
   await empty(oswaps, accounts.testtoken)
   await empty(seconduser, accounts.token)
+
 
   assert({
     given: 'reset all',
@@ -484,7 +486,23 @@ const empty = async( account, tokenaccount) => {
     expected: { rows: [ { balance: '4.5732 SEEDS' }, { balance: '32.4562 TESTS' } ], more: false, next_key: '' }
   })
 
-  
+  console.log("transfer LIQ asset")
+  await contracts.oswaps.transfer( firstuser, oswaps, "0.1000 LIQB", "transfer LIQB to contract",
+       { authorization: `${firstuser}@active` })  
+  await contracts.oswaps.transfer( oswaps, firstuser, "0.0500 LIQB", "transfer LIQB from contract",
+       { authorization: `${oswaps}@active` })  
+  assert({
+    given: 'transfer LIQB',
+    should: 'succeed',
+    actual: await getTableRows({
+      code: oswaps,
+      scope: firstuser,
+      table: 'accounts',
+      json: true
+    }),
+    expected: { rows: [ { balance: '4.9500 LIQB' } ], more: false, next_key: '' }
+  })
+ 
   
   console.log("forget SEEDS asset")
   await contracts.oswaps.forgetasset( seconduser, 1, "removing SEEDS",
