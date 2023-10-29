@@ -421,17 +421,25 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
         s.weight = itr->weight;
       });
       adpreptable.erase(itr);
-      // issue LIQ tokens to `from` account
+      // issue LIQ tokens to self & transfer to `from` account
       // TODO refactor as inline action to generate blockchain trx for this
       auto liq_sym_code = symbol_code(sym_from_id(itr->token_id, "LIQ"));
       stats lstatstable( get_self(), liq_sym_code.raw() );
       const auto& lst = lstatstable.get( liq_sym_code.raw() );
       asset lqty = quantity;
       lqty.symbol = symbol(liq_sym_code, quantity.symbol.precision());
-      add_balance( from, lqty, get_self() );
+      add_balance( get_self(), lqty, get_self() );
       lstatstable.modify( lst, same_payer, [&]( auto& s ) {
         s.supply += lqty;
       });
+      action (
+        permission_level{get_self(), "active"_n},
+        get_self(),
+        "transfer"_n,
+        std::make_tuple(get_self(), from, lqty,
+           std::string("oswaps liquidity receipt ")+std::to_string(memo_nonce))
+      ).send();
+
       
     } else {
       expreps expreptable(get_self(), get_self().value);
