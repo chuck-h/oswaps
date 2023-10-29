@@ -411,7 +411,7 @@ const empty = async( account, tokenaccount) => {
     await contracts.token.transfer( owner, oswaps, "10.0000 TESTS", stalenonce, { authorization: `${owner}@active` })
     actionProperlyBlocked = false
   } catch (err) {
-    actionProperlyBlocked &&= err.toString().includes('no matching transaction')
+    actionProperlyBlocked &&= err.toString().includes('has expired.')
     console.log( (actionProperlyBlocked ? "" : "un") + "expected error "+err)
   }
   
@@ -457,7 +457,7 @@ const empty = async( account, tokenaccount) => {
 
     actionProperlyBlocked = false
   } catch (err) {
-    actionProperlyBlocked &&= err.toString().includes('no matching transaction')
+    actionProperlyBlocked &&= err.toString().includes('has expired.')
     console.log( (actionProperlyBlocked ? "" : "un") + "expected error "+err)
   }
   

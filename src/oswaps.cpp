@@ -380,6 +380,7 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
               adx != adpreps_byexpiration.end();) {
       if(adx->expires.time_since_epoch().count() < usec_now) {
         //printf("expiring adprep %llu|", adx->nonce);
+        check(adx->nonce != memo_nonce, "prep "+std::to_string(memo_nonce)+" has expired.");
         adx = adpreps_byexpiration.erase(adx);
       } else {
         break;
@@ -399,6 +400,7 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
       });
       adpreptable.erase(itr);
       // issue LIQ tokens to `from` account
+      // TODO refactor as inline action to generate blockchain trx for this
       auto liq_sym_code = symbol_code(sym_from_id(itr->token_id, "LIQ"));
       stats lstatstable( get_self(), liq_sym_code.raw() );
       const auto& lst = lstatstable.get( liq_sym_code.raw() );
@@ -416,6 +418,7 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
       for (auto adx = expreps_byexpiration.begin();
                 adx != expreps_byexpiration.end();) {
         if(adx->expires.time_since_epoch().count() < usec_now) {
+          check(adx->nonce != memo_nonce, "exch "+std::to_string(memo_nonce)+" has expired.");
           adx = expreps_byexpiration.erase(adx);
         } else {
           break;
