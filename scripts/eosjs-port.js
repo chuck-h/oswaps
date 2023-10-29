@@ -103,8 +103,8 @@ class Eos {
           }, trxConfig)
         }
         catch (err) {
-          const errStr = ''+err
-          console.log('TRANSACTION ERROR:', errStr)
+          const errStr = err.toString()
+          console.log('TRANSACTION ERROR '+errStr)
           if (errStr.toLowerCase().includes('deadline exceeded')) {
             await sleep(3000)
             console.log('retrying...')
@@ -112,6 +112,11 @@ class Eos {
               actions
             }, trxConfig)
           } else {
+            const pending = err.json.error.details.filter((item) => item.message.startsWith("pending console output:"))
+              .map((item) => item.message.slice(23))
+            if (pending.some((x)=>x!='')) {
+              console.log("(pending output:) "+JSON.stringify(pending))
+            }
             console.log("Error on actions: "+JSON.stringify(actions))
             throw err
           }
