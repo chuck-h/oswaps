@@ -147,12 +147,20 @@ uint64_t oswaps::createasseta(name actor, string chain, name contract, symbol_co
             name(liq_sym_code.raw()).to_string().c_str());
   stats lstattable(get_self(), liq_sym_code.raw());
   auto existing = lstattable.find(liq_sym_code.raw());
-  check( existing == lstattable.end(), "liquidity token already exists");
-  lstattable.emplace( get_self(), [&]( auto& s ) {
-    s.supply.symbol = liq_sym;
-    s.max_supply    = asset(asset::max_amount, liq_sym);
-    s.issuer        = get_self();
-  });  
+  //check( existing == lstattable.end(), "liquidity token already exists");
+  if (existing != lstattable.end()) { // corner case from clumsy reset
+    lstattable.modify( existing, get_self(), [&]( auto& s ) {
+      s.supply      = asset(0, liq_sym);
+      s.max_supply  = asset(asset::max_amount, liq_sym);
+      s.issuer      = get_self();
+    });
+  } else {
+    lstattable.emplace( get_self(), [&]( auto& s ) {
+      s.supply.symbol = liq_sym;
+      s.max_supply    = asset(asset::max_amount, liq_sym);
+      s.issuer        = get_self();
+    }); 
+  } 
   return cfg.last_token_id;
 }
 
@@ -348,6 +356,7 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
     check(to == get_self(), "This transfer is not for oswaps");
     check(quantity.amount >= 0, "transfer quantity must be positive");
     name tkcontract = get_first_receiver();
+    //print("oswaps_ontransfer|");
     // get rightmost numerical token of memo as nonce
     size_t mp = memo.find_last_not_of("0123456789");
     check(mp+1 != memo.length(), "no nonce at end of memo");
@@ -363,12 +372,14 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
       return;
     }
     int64_t usec_now = current_time_point().time_since_epoch().count();
+    
     adpreps adpreptable(get_self(), get_self().value);
     // purge stale adprep table entries
     auto adpreps_byexpiration = adpreptable.get_index<"byexpiration"_n>();
     for (auto adx = adpreps_byexpiration.begin();
               adx != adpreps_byexpiration.end();) {
       if(adx->expires.time_since_epoch().count() < usec_now) {
+        //printf("expiring adprep %llu|", adx->nonce);
         adx = adpreps_byexpiration.erase(adx);
       } else {
         break;
@@ -412,7 +423,7 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
       }
       auto ex = expreptable.find( memo_nonce );
       if (ex == expreptable.end()) {
-        check(false, "no matching transaction");
+        check(false, "no matching transaction for "+std::to_string(memo_nonce));
       }
       assetsa assettable(get_self(), get_self().value);
       auto ain = assettable.require_find(ex->in_token_id, "unrecog input token id");

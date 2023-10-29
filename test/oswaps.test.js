@@ -373,8 +373,9 @@ const empty = async( account, tokenaccount) => {
     expected: [ { rows: [ { balance: '10.0000 LIQC' } ], more: false, next_key: '' }, { rows: [ { balance: '5.0000 LIQB' } ], more: false, next_key: '' } ]
   })
 
-
-  console.log('add TESTS liquidity and expire')
+  var stalenonce
+  var freshnonce
+  console.log('add TESTS liquidity 2x and expire')
   let actionProperlyBlocked = true
   try {
     // TBD this expiration computation doesn't make sense, but works.
@@ -385,10 +386,29 @@ const empty = async( account, tokenaccount) => {
        )
     rv = new Int32Array(rvbuf.buffer, rvbuf.byteOffset, 1)[0]
     console.log(`action returned ${rv}`)
-
-    await sleep(expirems + 500);
+    stalenonce = rv
     
-    await contracts.token.transfer( owner, oswaps, "10.0000 TESTS", "1116", { authorization: `${owner}@active` })
+    exptimestamp = (new Date(500*Math.trunc(Date.now()/500) + expirems + 500)).toISOString().slice(0,-1);
+    res = await contracts.oswaps.addliqprep( firstuser, 2, "11.0000 TESTS", 1.00, { authorization: `${firstuser}@active` })
+    rvbuf = Buffer.from(
+         res.processed.action_traces[0].return_value_hex_data, 'hex'
+       )
+    rv = new Int32Array(rvbuf.buffer, rvbuf.byteOffset, 1)[0]
+    console.log(`action returned ${rv}`)
+
+    console.log("waiting...")
+    await sleep(expirems + 500);
+
+    exptimestamp = (new Date(500*Math.trunc(Date.now()/500) + expirems + 500)).toISOString().slice(0,-1);
+    res = await contracts.oswaps.addliqprep( firstuser, 2, "12.0000 TESTS", 1.00, { authorization: `${firstuser}@active` })
+    rvbuf = Buffer.from(
+         res.processed.action_traces[0].return_value_hex_data, 'hex'
+       )
+    rv = new Int32Array(rvbuf.buffer, rvbuf.byteOffset, 1)[0]
+    console.log(`action returned ${rv}`)
+    freshnonce = rv
+    
+    await contracts.token.transfer( owner, oswaps, "10.0000 TESTS", stalenonce, { authorization: `${owner}@active` })
     actionProperlyBlocked = false
   } catch (err) {
     actionProperlyBlocked &&= err.toString().includes('no matching transaction')
@@ -402,6 +422,21 @@ const empty = async( account, tokenaccount) => {
     expected: true
   })
 
+  console.log('send TEST tokens for liquidity on time')
+  await contracts.token.transfer( owner, oswaps, "12.0000 TESTS", freshnonce, { authorization: `${owner}@active` })
+  
+  assert({
+    given: 'send TESTS tokens',
+    should: 'succeed and clear adprep queue',
+    actual: (await getTableRows({
+      code: oswaps,
+      scope: oswaps,
+      table: 'adpreps',
+      json: true
+    })),
+    expected: { rows: [], more: false, next_key: '' }
+  })
+    
   console.log('prepare exchange and expire')
   actionProperlyBlocked = true
   try {
@@ -414,10 +449,11 @@ const empty = async( account, tokenaccount) => {
        )
     rv = [1,9,17,25].map((x)=>rvbuf.readInt32LE(x));
     console.log(`action returned ${rv}`)
-  
+    stalenonce = rv[0]
+    
     await sleep(expirems + 500);
     
-    await contracts.token.transfer( owner, oswaps, "0.3000 TESTS", "1117", { authorization: `${owner}@active` })
+    await contracts.token.transfer( owner, oswaps, "0.3000 TESTS", stalenonce, { authorization: `${owner}@active` })
 
     actionProperlyBlocked = false
   } catch (err) {
@@ -445,7 +481,7 @@ const empty = async( account, tokenaccount) => {
       table: 'accounts',
       json: true
     })),
-    expected: { rows: [ { balance: '4.5732 SEEDS' }, { balance: '20.4562 TESTS' } ], more: false, next_key: '' }
+    expected: { rows: [ { balance: '4.5732 SEEDS' }, { balance: '32.4562 TESTS' } ], more: false, next_key: '' }
   })
 
   
