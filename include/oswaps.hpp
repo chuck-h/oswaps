@@ -214,7 +214,16 @@ CONTRACT oswaps : public contract {
          ACTION transfer( const name&    from,
                                const name&    to,
                                const asset&   quantity,
-                               const string&  memo );         
+                               const string&  memo );
+
+         /**
+          * The opposite of a create action, if all validations succeed,
+          * it debits the statstable.supply amount.
+          *
+          * @param quantity - the quantity of tokens to retire,
+          * @param memo - the memo string to accompany the transaction.
+          */
+         ACTION retire( const asset& quantity, const string& memo );  
 
       /**
           * The `ontransfer` action is called whenever any token is transferred to

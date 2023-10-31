@@ -217,9 +217,13 @@ void oswaps::withdraw(name account, uint64_t token_id, string amount, float weig
   asset lqty = qty;
   lqty.symbol = symbol(liq_sym_code, qty.symbol.precision());
   sub_balance( account, lqty );
-  lstatstable.modify( lst, same_payer, [&]( auto& s ) {
-    s.supply -= lqty;
-  });
+  add_balance( get_self(), lqty, get_self()); 
+  action (
+    permission_level{get_self(), "active"_n},
+    get_self(),
+    "retire"_n,
+    std::make_tuple(lqty, std::string("oswaps withdrawal for "+account.to_string()))
+  ).send(); 
 
   action (
     permission_level{get_self(), "active"_n},
@@ -352,7 +356,7 @@ void oswaps::transfer( const name& from, const name& to, const asset& quantity,
     check( from != to, "cannot transfer to self" );
     // should this no-p2p restriction be under manager config control?
     check( from == get_self() || to == get_self(), "oswaps token transfers must be to/from contract");
-    require_auth( from );
+    require_auth( from ); // TODO: allow manager to authorize LIQxx transfers for withdrawals
     check( is_account( to ), "to account does not exist");
     auto sym = quantity.symbol.code();
     stats statstable( get_self(), sym.raw() );
@@ -422,7 +426,6 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
       });
       adpreptable.erase(itr);
       // issue LIQ tokens to self & transfer to `from` account
-      // TODO refactor as inline action to generate blockchain trx for this
       auto liq_sym_code = symbol_code(sym_from_id(itr->token_id, "LIQ"));
       stats lstatstable( get_self(), liq_sym_code.raw() );
       const auto& lst = lstatstable.get( liq_sym_code.raw() );
@@ -561,5 +564,28 @@ void oswaps::add_balance( const name& owner, const asset& value, const name& ram
    }
 }
 
-  
+void oswaps::retire( const asset& quantity, const string& memo )
+{
+    auto sym = quantity.symbol;
+    check( sym.is_valid(), "invalid symbol name" );
+    check( memo.size() <= 256, "memo has more than 256 bytes" );
+
+    stats statstable( get_self(), sym.code().raw() );
+    auto existing = statstable.find( sym.code().raw() );
+    check( existing != statstable.end(), "token with symbol does not exist" );
+    const auto& st = *existing;
+
+    require_auth( st.issuer );
+    check( quantity.is_valid(), "invalid quantity" );
+    check( quantity.amount > 0, "must retire positive quantity" );
+
+    check( quantity.symbol == st.supply.symbol, "symbol precision mismatch" );
+
+    statstable.modify( st, same_payer, [&]( auto& s ) {
+       s.supply -= quantity;
+    });
+
+    sub_balance( st.issuer, quantity );
+}
+
 
