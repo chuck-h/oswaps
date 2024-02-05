@@ -25,6 +25,7 @@
     "eosjs": "^21.0.3",
     "eosjs-ecc": "^4.0.7",
     "fs-extra": "^9.1.0",
+    "fuckyea": "^1.1.5",
     "handlebars": "^4.7.6",
     "json": "^9.0.6",
     "mocha": "^6.1.4",

@@ -1,4 +1,4 @@
-#include <oswaps.hpp>
+#include "oswaps.hpp"
 #include <../capi/eosio/action.h>
 
 const checksum256 telos_chain_id = checksum256::make_from_word_sequence<uint64_t>(
