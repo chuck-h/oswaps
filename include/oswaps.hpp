@@ -20,11 +20,11 @@ using std::string;
     *   - liquidity metering
     *   - multichain operation
     *
-    * Transfers into the oswaps contract proceed via two steps :
-    *   First, the originator submits transaction details in a "prep" action, which returns data
-    *     including a nonce, i.e. an ephemeral transaction code.
-    *   Second, the originator sends an ordinary token transfer action to the contract, with a memo
-    *     field containing the nonce; the action sent earlier is executed.
+    * Transfers into the oswaps contract proceed via a compound transaction containing two actions
+    *   In the first action, the originator submits transaction details in a "prep" action
+    *   In the second action, the originator sends an ordinary token transfer action to the contract.
+    *     The transfer triggers an "on-notify" routine which accesses the fields in the "prep"
+    *     action call, which must immediately precede the transfer in a compound transaction.
     *
     * The contract anticipates a future ability to operate across different chains, with
     *   varying conventions for token identification. Therefore token identities are
@@ -102,7 +102,14 @@ CONTRACT oswaps : public contract {
           * @param symbol - the symbol of the affected token
       */
       ACTION unfreeze(name actor, uint64_t token_id, string symbol);
-      
+      /**
+          * The `querypool` action returns an array reporting on the balances and
+          *   weights in the pool. This informations is intended to enable the caller
+          *   to compute the exchange rate for an upcoming transaction.
+          *
+          * @param token_id_list - an array of numerical token identifiers 
+      */
+      [[eosio::action, eosio::read_only]] poolStatus querypool(std::vector<uint64_t> token_id_list);
 
       /**
           * The `createasseta` creates an entry in the asset table for an
@@ -155,14 +162,12 @@ CONTRACT oswaps : public contract {
           * @param token_id - a numerical token identifier in the asset table
           * @param amount - the amount of asset (quantity, symbol) to add to pool;
           * @param weight - the new balancer weight (or zero)
-          *
-          * @result - a nonce identifying this transaction
       */
-      [[eosio::action]] uint32_t addliqprep(name account, uint64_t token_id,
-                                            string amount, float weight);
+      ACTION addliqprep(name account, uint64_t token_id,
+                        string amount, float weight);
 
       /**
-          * The `exchangeprep` action is a function describing a conversion
+          * The `exprepfrom` and `exprepto` actions are functions describing a conversion
           *   ("currency exchange") transaction, taking a quantity of tokens from the sender
           *   and delivering a corresponding quantity of a different token to the recipient. 
           * The conversion ratio ("exchange rate") is computed according to a multilateral
@@ -171,40 +176,45 @@ CONTRACT oswaps : public contract {
           *   and therefore depends dynamically on the pool balances B. In the small-
           *   transaction limit (no "slippage"), and with zero fees, an input of
           *   Qi tokens of type i will emit Qj = Qi * (Bj/Bi)*(Wi/Wj) tokens of type j.
-          * In the action call, both incoming and outgoing amounts are specified, but
-          *   only one of them is the "exact" or "controlling" parameter. The other
-          *   amount specifies a limit; the action will fail if the computed exchange value
-          *   is beyond the limit. The `mods` parameter (e.g. '{ "exact":"in" }' encodes
-          *   the choice of exact field. If the incoming amount is exact, the computed
-          *   outgoing value must be no less than the outgoing amount parameter. If the
-          *   outgoing amount is exact, the computed incoming value must be no more than
-          *   the value of the incoming amount parameter.
+          *
+          * In the `exprepfrom` action call, the incoming amount is specified and the outgoing
+          *   amount is to be computed by the contract.
           * 
           * 
           * @param sender - the account sourcing tokens to the transaction
-          * @param in_token_id - a numerical token identifierfor the incoming asset
-          * @param in_amount - the incoming amount (quantity, symbol) 
           * @param recipient - the account receiving tokens from the transaction
+          * @param in_token_id - a numerical token identifierfor the incoming asset
           * @param out_token_id - a numerical token identifier for the outgoing asset
-          * @param out_amount - the outgoing amount (quantity, symbol)
-          * @param mods - a simple json object
+          * @param in_amount - the incoming amount (quantity, symbol) 
           * @param memo
           *
-          * @result a vector of 4 uint64_t elements
-          *     rv[0] - a nonce identifying this transaction
-          *     rv[1] - the quantity of incoming tokens assessed as fee
-          *     rv[2] - the quantity of outgoing tokens assessed as fee
-          *     rv[3] - the computed quantity field of the non-controlling asset
           *
       */
-      [[eosio::action]] std::vector<int64_t> exchangeprep(
-           name sender, uint64_t in_token_id, string in_amount,
-           name recipient, uint64_t out_token_id, string out_amount,
-           string mods, string memo);
+      ACTION exprepfrom(
+           name sender, name recipient, uint64_t in_token_id, uint64_t out_token_id,
+           string in_amount, string memo);
+
+      /**
+          * In the `exprepto` action call, the outgoing amount is specified and the incoming
+          *   amount is to be computed by the contract.
+          * 
+          * @param sender - the account sourcing tokens to the transaction
+          * @param recipient - the account receiving tokens from the transaction
+          * @param in_token_id - a numerical token identifierfor the incoming asset
+          * @param out_token_id - a numerical token identifier for the outgoing asset
+          * @param out_amount - the outgoing amount (quantity, symbol)
+          * @param memo
+          *
+      */
+      ACTION exprepto(
+           name sender, name recipient, uint64_t in_token_id, uint64_t out_token_id,
+           string out_amount, string memo);
+
            
       /**
-          * Allows `from` account to transfer to `to` account the `quantity` tokens.
-          * One account is debited and the other is credited with quantity tokens.
+          * Allows `from` account to transfer to `to` account the `quantity` tokens
+          * issued under this contract (e.g. LIQxx tokens). One account is debited and
+          * the other is credited with quantity tokens.
           *
           * @param from - the account to transfer from,
           * @param to - the account to be transferred to,
@@ -230,11 +240,12 @@ CONTRACT oswaps : public contract {
           * or from the oswaps contract. (The call is initiated by the 
           * `require-recipient` function in the token contract.)
           *
-          * This action examines the memo field to identify a pending liquidity or
-          * exchange event and executes it. If there is no valid pending event
-          * matching the transfer, the transfer is blocked.
-          * As a special case, using the magic memo code (42) allows a token
-          * transfer into the contract without a pending event.
+          * This action inspects the transaction in which the transfer action
+          *   was embedded. There should be an immediately preceding action
+          *   specifying the intended consequence of this token transfer
+          *   (e.g. add liquidity, swap, ...)
+          * If no recognized action preceded the transfer, the token is
+          *   transferred into the contract account's balance.
           *
           * @param from - token sender
           * @param to - token recipient
@@ -244,6 +255,15 @@ CONTRACT oswaps : public contract {
       [[eosio::on_notify("*::transfer")]]
       void ontransfer(name from, name to, eosio::asset quantity, string memo);
 
+    struct statusEntry {
+      uint64_t token_id,
+      asset balance,
+      name contract,
+
+    }
+    struct poolStatus {
+      std::vector<statusEntry> status_entries
+    }
       
   private:
 

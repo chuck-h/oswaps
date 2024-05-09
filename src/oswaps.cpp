@@ -24,20 +24,6 @@ uint64_t amount_from(symbol sym, string qty) {
   return rv;
 }
 
-/** hack ** hack ** hack **/
-bool parse_mod_in(string s) {
-  // strip whitespace
-  s.erase(std::remove_if(s.begin(), s.end(), [](unsigned char x) { return std::isspace(x); }), s.end());
-  check(s[0] == '{' && s.back() == '}', "mod: missing braces");
-  size_t f = s.find("\"exact\"", 1);
-  check(f != string::npos, "mod: missing exact field");
-  bool exact_in = s.substr(f+7, 5) == ":\"in\"";
-  if (!exact_in) {
-    check(s.substr(f+7, 6) == ":\"out\"", "mod: exact fld must be in or out");
-  }
-  return exact_in;
-} 
-  
 string sym_from_id(uint64_t token_id, string prefix) {
   if (token_id < 26) {
     return prefix + string(1, 'A' + token_id);
@@ -116,6 +102,18 @@ void oswaps::freeze(name actor, uint64_t token_id, string symbol) {
 void oswaps::unfreeze(name actor, uint64_t token_id, string symbol) {
   check(false, "unfreeze not supported");
 };
+
+poolStatus oswaps::querypool(std::vector<uint64_t> token_id_list){
+  poolStatus rv();
+  for (const uint64_t& token_id : token_id_list) {
+    statusEntry e();
+    e.token_id = token_id;
+    e.balance = ;
+    e.contract = ;
+    rv.push_back(e);
+  }
+  return rv;
+}
 
 uint64_t oswaps::createasseta(name actor, string chain, name contract, symbol_code symbol, string meta) {
   require_auth(actor);
@@ -272,14 +270,12 @@ uint32_t oswaps::addliqprep(name account, uint64_t token_id,
   return ap.nonce;
 }
 
-std::vector<int64_t> oswaps::exchangeprep(
-           name sender, uint64_t in_token_id, string in_amount,
-           name recipient, uint64_t out_token_id, string out_amount,
-           string mods, string memo) {
-  configs configset(get_self(), get_self().value);
-  auto cfg = configset.get();
-  cfg.last_nonce += 1;
-  configset.set(cfg, get_self());
+void oswaps::exprepfrom(
+           name sender, name recipient, uint64_t in_token_id, uint64_t out_token_id,
+           string in_amount, string memo) {
+
+  // TODO: use read_transaction to verify that subsequent transaction is a token transfer
+
   assetsa assettable(get_self(), get_self().value);
   
   auto ain = assettable.require_find(in_token_id, "unrecog input token id");
@@ -305,20 +301,61 @@ std::vector<int64_t> oswaps::exchangeprep(
     out_bal_before = acout->balance.amount;
   }
 
+  // actually no need to do balancer computation yet..
   // balancer computation 
   // for controlling asset, compute LC = ln(new/old)
   // for noncontrolling asset compute LNC = - WC/WNC * LC
   // for noncontrolling compute new = old * exp(LNC)
   double lc, lnc;
-  bool input_is_exact = parse_mod_in(mods);
   int64_t in_bal_after, out_bal_after, computed_amt;
-  if (input_is_exact) {
     in_bal_after = in_bal_before + in_amount64;
     lc = log((double)in_bal_after/in_bal_before);
     lnc = -(ain->weight/aout->weight * lc);
     out_bal_after = llround(out_bal_before * exp(lnc));
     computed_amt = out_bal_before - out_bal_after;
-  } else {
+  printf("(from) balancer lc %f, lnc %f", lc, lnc);
+
+}
+
+void oswaps::exprepto(
+           name sender, name recipient, uint64_t in_token_id, uint64_t out_token_id,
+           string out_amount, string memo) {
+
+  // TODO: use read_transaction to verify that subsequent transaction is a token transfer
+  //  if so, store this packed action into temporary table
+
+  assetsa assettable(get_self(), get_self().value);
+  
+  auto ain = assettable.require_find(in_token_id, "unrecog input token id");
+  stats in_stattable(ain->contract_name, ain->symbol.raw());
+  auto stin = in_stattable.require_find(ain->symbol.raw(), "can't stat symbol");
+  uint64_t in_amount64 = amount_from(stin->supply.symbol, in_amount);
+  accounts in_accttable(ain->contract_name, get_self().value);
+  auto acin = in_accttable.find(ain->symbol.raw());
+  uint64_t in_bal_before = 0;
+  if(acin != in_accttable.end()) {
+    in_bal_before = acin->balance.amount;
+  }
+  check(in_bal_before > 0, "zero input balance");
+  
+  auto aout = assettable.require_find(out_token_id, "unrecog output token id");
+  stats out_stattable(aout->contract_name, aout->symbol.raw());
+  auto stout = out_stattable.require_find(aout->symbol.raw(), "can't stat symbol");
+  uint64_t out_amount64 = amount_from(stout->supply.symbol, out_amount);
+  accounts out_accttable(aout->contract_name, get_self().value);
+  auto acout = out_accttable.find(aout->symbol.raw());
+  uint64_t out_bal_before = 0;
+  if(acout != out_accttable.end()) {
+    out_bal_before = acout->balance.amount;
+  }
+
+  // actually no need to do balancer computation yet..
+  // balancer computation 
+  // for controlling asset, compute LC = ln(new/old)
+  // for noncontrolling asset compute LNC = - WC/WNC * LC
+  // for noncontrolling compute new = old * exp(LNC)
+  double lc, lnc;
+  int64_t in_bal_after, out_bal_after, computed_amt;
     out_bal_after = out_bal_before - out_amount64;
     check(out_bal_after > 0, "insufficient pool bal output token");
     lc = log((double)out_bal_after/out_bal_before);
@@ -326,28 +363,8 @@ std::vector<int64_t> oswaps::exchangeprep(
     in_bal_after = llround(in_bal_before * exp(lnc));
     computed_amt = in_bal_after - in_bal_before;
   }
-  printf("balancer lc %f, lnc %f", lc, lnc);
+  printf("(to) balancer lc %f, lnc %f", lc, lnc);
 
-  expreps expreptable(get_self(), get_self().value);
-  exprep ex;
-  ex.nonce = cfg.last_nonce;
-  ex.expires = time_point(microseconds(
-    current_time_point().time_since_epoch().count()
-    + 1000*cfg.nonce_life_msec));
-  ex.sender = sender;
-  ex.in_token_id = in_token_id;
-  ex.in_amount = in_amount;
-  ex.recipient = recipient;
-  ex.out_token_id = out_token_id;
-  ex.out_amount = out_amount;
-  ex.mods = mods;
-  ex.memo = memo;
-  expreptable.emplace(get_self(), [&]( auto& s ) {
-    s = ex;
-  });
-
-  std::vector<int64_t> rv{static_cast<int64_t>(ex.nonce), 0, 0, computed_amt };
-  return rv;
 }
 
 void oswaps::transfer( const name& from, const name& to, const asset& quantity,
