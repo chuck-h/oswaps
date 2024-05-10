@@ -25,6 +25,7 @@ using std::string;
     *   In the second action, the originator sends an ordinary token transfer action to the contract.
     *     The transfer triggers an "on-notify" routine which accesses the fields in the "prep"
     *     action call, which must immediately precede the transfer in a compound transaction.
+    *   These two actions must be next-to-last and last action of the transaction, respectively.
     *
     * The contract anticipates a future ability to operate across different chains, with
     *   varying conventions for token identification. Therefore token identities are
@@ -75,13 +76,12 @@ CONTRACT oswaps : public contract {
 
       /**
           * The one-time `init` action executed by the oswaps contract account records
-          *  the manager account, nonce validity time, and chain identifier
+          *  the manager account and chain identifier
           *
           * @param manager - an account empowered to execute freeze and setparameter actions
-          * @param nonce_life_msec - the time validity window for a "prep" action nonce
           * @param chain - a well-known name or hex-encoded chain_id
       */
-      ACTION init(name manager, uint64_t nonce_life_msec, string chain);
+      ACTION init(name manager, string chain);
       
       /**
           * The `freeze` action executed by the manager or other authorized actor suspends
@@ -264,7 +264,14 @@ CONTRACT oswaps : public contract {
     struct poolStatus {
       std::vector<statusEntry> status_entries
     }
-      
+    struct addliqprep_params {
+      name account;
+      uint64_t token_id;
+      string amount;
+      float weight;
+      EOSLIB_SERIALIZE( addliqprep_params, (account)(token_id)(amount)(weight) )
+    };
+    
   private:
 
       /********** standard token-contract tables ***********/
@@ -286,10 +293,8 @@ CONTRACT oswaps : public contract {
       // config
       TABLE config { // singleton, scoped by contract account name
         name manager;
-        uint64_t nonce_life_msec;
         checksum256 chain_id;
         uint64_t last_token_id;
-        uint32_t last_nonce;
       } config_row;
 
       // types of antelope tokens
@@ -306,50 +311,19 @@ CONTRACT oswaps : public contract {
         checksum256 by_chain() const { return chain_code; }
       };
      
-     // prepped liquidity additions
-     TABLE adprep { // single table, scoped by contract account name
-       uint64_t nonce;
-       time_point expires;
-       name account;
-       uint64_t token_id;
-       string amount;
-       float weight;
-       
-       uint64_t primary_key() const { return nonce; }
-       uint64_t by_expiration() const { return expires.elapsed._count; }
-     };
+      // for temporary storage of prep transaction
+      TABLE tx { // singleton, scoped by contract account name
+        std::string txdata;
+      } tx_row;
 
-     // prepped exchanges
-     TABLE exprep { // single table, scoped by contract account name
-       uint64_t nonce;
-       time_point expires;
-       name sender;
-       uint64_t in_token_id;
-       string in_amount;
-       name recipient;
-       uint64_t out_token_id;
-       string out_amount;
-       string mods;
-       string memo;
-       
-       uint64_t primary_key() const { return nonce; }
-       uint64_t by_expiration() const { return expires.elapsed._count; }
-     };
-       
       typedef eosio::singleton< "configs"_n, config > configs;
       typedef eosio::multi_index< "configs"_n, config >  dump_for_config;
       typedef eosio::multi_index<"assetsa"_n, assettypea, indexed_by
                < "bychain"_n,
                  const_mem_fun<assettypea, checksum256, &assettypea::by_chain > >
                > assetsa;
-      typedef eosio::multi_index<"adpreps"_n, adprep, indexed_by
-               < "byexpiration"_n,
-                 const_mem_fun<adprep, uint64_t, &adprep::by_expiration > >
-               > adpreps;
-      typedef eosio::multi_index<"expreps"_n, exprep, indexed_by
-               < "byexpiration"_n,
-                 const_mem_fun<exprep, uint64_t, &exprep::by_expiration > >
-               > expreps;
+      typedef eosio::singleton< "tx"_n, tx > txx;
+      typedef eosio::multi_index< "tx"_n, tx >  dump_for_tx;
 
       void sub_balance( const name& owner, const asset& value );
       void add_balance( const name& owner, const asset& value, const name& ram_payer );

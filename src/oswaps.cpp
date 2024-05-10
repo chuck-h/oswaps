@@ -32,6 +32,28 @@ string sym_from_id(uint64_t token_id, string prefix) {
     return sym_from_id(token_id%26, prefix);
   }
 }
+
+void save_transaction(name entry) {
+  auto size = transaction_size();
+  printf("tx size %ld", size);
+  char *   buffer = (char *)(512 < size ? malloc(size) : alloca(size));
+  uint32_t read   = read_transaction(buffer, size);
+  check(size == read, "read_transaction failed");
+  transaction trx = unpack<transaction>(buffer, size);  
+  // validations to do
+  //   trx.actions() gives us a vector of the actions
+  //   check that the last action is a transfer to oswaps
+  //    (this should guarantee that the eosio::notify gets triggered
+  //      to execute and clean up the stored transaction)
+  //   check that the next-to-last action is oswaps `entry` 
+  //    (that should be the current action, but we can't prove it) 
+  std::string data(buffer, size);
+  txx txset(get_self(), get_self().value);
+  auto tx = txset.get_or_create(get_self(), tx_row);
+  tx.txdata = data;
+  txset.set(tx, get_self());
+  return;
+}
   
 void oswaps::reset() {
   require_auth2(get_self().value, "owner"_n.value);
@@ -231,12 +253,12 @@ void oswaps::withdraw(name account, uint64_t token_id, string amount, float weig
   ).send(); 
 }
 
-uint32_t oswaps::addliqprep(name account, uint64_t token_id,
+void oswaps::addliqprep(name account, uint64_t token_id,
                             string amount, float weight) {
-  configs configset(get_self(), get_self().value);
-  auto cfg = configset.get();
-  cfg.last_nonce += 1;
-  configset.set(cfg, get_self());
+                          
+  save_transaction("addliqprep"_n);
+  /* move the rest of this to ontransfer routine
+  
   assetsa assettable(get_self(), get_self().value);
   auto a = assettable.require_find(token_id, "unrecog token id");
   // TODO verify chain & family
@@ -254,28 +276,17 @@ uint32_t oswaps::addliqprep(name account, uint64_t token_id,
     check(bal_before > 0, "zero weight requires existing balance");
     new_weight = a->weight * (1.0 + float(amount64)/bal_before);
   }
-  adpreps adpreptable(get_self(), get_self().value);
-  adprep ap;
-  ap.nonce = cfg.last_nonce;
-  ap.expires = time_point(microseconds(
-    current_time_point().time_since_epoch().count()
-    + 1000*cfg.nonce_life_msec));
-  ap.account = account;
-  ap.token_id = token_id;
-  ap.amount = amount;
-  ap.weight = new_weight;
-  adpreptable.emplace(get_self(), [&]( auto& s ) {
-    s = ap;
-  });
-  return ap.nonce;
+  */
 }
 
 void oswaps::exprepfrom(
            name sender, name recipient, uint64_t in_token_id, uint64_t out_token_id,
            string in_amount, string memo) {
 
-  // TODO: use read_transaction to verify that subsequent transaction is a token transfer
+  save_transaction("exprepfrom"_n);
 
+  /* move the rest of this to ontransfer routine
+  
   assetsa assettable(get_self(), get_self().value);
   
   auto ain = assettable.require_find(in_token_id, "unrecog input token id");
@@ -301,7 +312,6 @@ void oswaps::exprepfrom(
     out_bal_before = acout->balance.amount;
   }
 
-  // actually no need to do balancer computation yet..
   // balancer computation 
   // for controlling asset, compute LC = ln(new/old)
   // for noncontrolling asset compute LNC = - WC/WNC * LC
@@ -314,18 +324,19 @@ void oswaps::exprepfrom(
     out_bal_after = llround(out_bal_before * exp(lnc));
     computed_amt = out_bal_before - out_bal_after;
   printf("(from) balancer lc %f, lnc %f", lc, lnc);
-
+  */
 }
 
 void oswaps::exprepto(
            name sender, name recipient, uint64_t in_token_id, uint64_t out_token_id,
            string out_amount, string memo) {
 
-  // TODO: use read_transaction to verify that subsequent transaction is a token transfer
-  //  if so, store this packed action into temporary table
+  save_transaction("exprepto"_n);
 
-  assetsa assettable(get_self(), get_self().value);
+  /* move the rest of this to ontransfer routine
   
+  assetsa assettable(get_self(), get_self().value);
+
   auto ain = assettable.require_find(in_token_id, "unrecog input token id");
   stats in_stattable(ain->contract_name, ain->symbol.raw());
   auto stin = in_stattable.require_find(ain->symbol.raw(), "can't stat symbol");
@@ -349,7 +360,6 @@ void oswaps::exprepto(
     out_bal_before = acout->balance.amount;
   }
 
-  // actually no need to do balancer computation yet..
   // balancer computation 
   // for controlling asset, compute LC = ln(new/old)
   // for noncontrolling asset compute LNC = - WC/WNC * LC
@@ -364,7 +374,7 @@ void oswaps::exprepto(
     computed_amt = in_bal_after - in_bal_before;
   }
   printf("(to) balancer lc %f, lnc %f", lc, lnc);
-
+  */
 }
 
 void oswaps::transfer( const name& from, const name& to, const asset& quantity,
@@ -395,53 +405,54 @@ void oswaps::transfer( const name& from, const name& to, const asset& quantity,
 }
  
 void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) {
-    if (from == get_self()) return;
-    check(to == get_self(), "This transfer is not for oswaps");
-    check(quantity.amount >= 0, "transfer quantity must be positive");
-    name tkcontract = get_first_receiver();
-    //print("oswaps_ontransfer|");
-    // get rightmost numerical token of memo as nonce
-    size_t mp = memo.find_last_not_of("0123456789");
-    check(mp+1 != memo.length(), "no nonce at end of memo");
-    string nonce_string;
-    if (mp == string::npos) {
-      nonce_string = memo;
-    } else {
-      nonce_string = memo.substr(mp+1);
-    }
-    uint64_t memo_nonce = std::stol(nonce_string, nullptr);
-    uint64_t bypass_code = 42;
-    if (memo_nonce == bypass_code) {
+    string check_string = "";
+    if (from == get_self()) goto get_out;
+    // check if there is a stored transaction
+    // if not, this is an unrestricted transfer into oswaps
+    // [should we also require a confirming memo field?]
+    txx txset(get_self(), get_self().value);
+    if (!txset.exists()) {
       return;
     }
-    int64_t usec_now = current_time_point().time_since_epoch().count();
     
-    adpreps adpreptable(get_self(), get_self().value);
-    // purge stale adprep table entries
-    auto adpreps_byexpiration = adpreptable.get_index<"byexpiration"_n>();
-    for (auto adx = adpreps_byexpiration.begin();
-              adx != adpreps_byexpiration.end();) {
-      if(adx->expires.time_since_epoch().count() < usec_now) {
-        //printf("expiring adprep %llu|", adx->nonce);
-        check(adx->nonce != memo_nonce, "prep "+std::to_string(memo_nonce)+" has expired.");
-        adx = adpreps_byexpiration.erase(adx);
-      } else {
-        break;
-      }
+    check(to == get_self(), "This transfer is not for oswaps"); // dispatch error?
+    if (quantity.amount < 0) {
+      check_string = "transfer quantity must be positive";
+      goto check_out;
     }
-    // if in adprep table, accept addition of liquidity
-    auto itr = adpreptable.find( memo_nonce );
-    if (itr != adpreptable.end()) {
-      assetsa assettable(get_self(), get_self().value);
-      auto a = assettable.require_find(itr->token_id, "unrecog token id");
+    name tkcontract = get_first_receiver();
+    //print("oswaps_ontransfer|");
+
+    // analyze the stored transaction
+
+    auto tx = txset.get(get_self(), tx_row);
+    size_t size = tx.txdata.length();
+    printf("retrieved serialized tx, size %d ", size);
+    transaction trx = unpack<transaction>(tx.txdata.data(), size);
+    int action_count = trx.actions.size();
+    if (action_count <2) {
+      check_string = "malformed oswaps trx, <2 actions";
+      goto check_out;
+    }
+    auto prep_action = trx.actions[action_count-2]; // should be the prep action
+    if (prep_action.account != get_self() {
+      check_string = "malformed oswaps tx, prep should precede transfer";
+      goto check_out;
+    }
+    name prep_type = prep_action.name;
+    assetsa assettable(get_self(), get_self().value);
+    
+    if (prep_type == "addliqprep"_n) {
+      addliqprep_params ap = unpack<addliqprep_params>(prep_action.data.data(), prep_action.data.size());
+
+      auto a = assettable.require_find(ap.token_id, "unrecog token id");
       // TODO verify chain & family
       check(a->contract_name == tkcontract, "wrong token contract");
-      uint64_t amt = amount_from(quantity.symbol, itr->amount);
+      uint64_t amt = amount_from(quantity.symbol, ap.amount);
       check(amt == quantity.amount, "transfer qty mismatched to prep");
       assettable.modify(a, same_payer, [&](auto& s) {
-        s.weight = itr->weight;
+        s.weight = ap.weight;
       });
-      adpreptable.erase(itr);
       // issue LIQ tokens to self & transfer to `from` account
       auto liq_sym_code = symbol_code(sym_from_id(itr->token_id, "LIQ"));
       stats lstatstable( get_self(), liq_sym_code.raw() );
@@ -461,80 +472,57 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
       ).send();
 
       
-    } else {
-      expreps expreptable(get_self(), get_self().value);
-      // purge stale exprep table entries
-      auto expreps_byexpiration = expreptable.get_index<"byexpiration"_n>();
-      for (auto adx = expreps_byexpiration.begin();
-                adx != expreps_byexpiration.end();) {
-        if(adx->expires.time_since_epoch().count() < usec_now) {
-          check(adx->nonce != memo_nonce, "exch "+std::to_string(memo_nonce)+" has expired.");
-          adx = expreps_byexpiration.erase(adx);
-        } else {
-          break;
+    } else if (prep_type == "exprepfrom"_n || prep_type == "exprepto"_n ) {
+      // exchange transaction
+      if (prep_type == "exprepfrom"_n) { // incoming amount is exact
+        exprepfrom_params efp = unpack<exprepfrom_params>(prep_action.data.data(), prep_action.data.size());
+        auto ain = assettable.require_find(efp.in_token_id, "unrecog input token id");
+        if (ain->contract_name != tkcontract) {
+          check_string="wrong token contract";
+          goto check_out;
         }
-      }
-      auto ex = expreptable.find( memo_nonce );
-      if (ex == expreptable.end()) {
-        check(false, "no matching transaction for "+std::to_string(memo_nonce));
-      }
-      assetsa assettable(get_self(), get_self().value);
-      auto ain = assettable.require_find(ex->in_token_id, "unrecog input token id");
-      check(ain->contract_name == tkcontract, "wrong token contract");
-      stats in_stattable(ain->contract_name, ain->symbol.raw());
-      auto stin = in_stattable.require_find(ain->symbol.raw(), "can't stat symbol");
-      uint64_t in_amount64 = amount_from(stin->supply.symbol, ex->in_amount);
-      accounts in_accttable(ain->contract_name, get_self().value);
-      auto acin = in_accttable.find(ain->symbol.raw());
-      uint64_t in_bal_before = 0;
-      if(acin != in_accttable.end()) {
-        // must back out transfer which just occurred
+        stats in_stattable(ain->contract_name, ain->symbol.raw());
+        auto stin = in_stattable.require_find(ain->symbol.raw(), "can't stat symbol");
+        uint64_t in_amount64 = amount_from(stin->supply.symbol, efp.in_amount);
+        accounts in_accttable(ain->contract_name, get_self().value);
+        auto acin = in_accttable.find(ain->symbol.raw());
+        uint64_t in_bal_before = 0;
+        if(acin != in_accttable.end()) {
+          // must back out transfer which just occurred
         in_bal_before = acin->balance.amount - quantity.amount;
-      }
-      check(in_bal_before > 0, "zero input balance");
+        }
+        if (in_bal_before <= 0, "zero input balance");
 
-      auto aout = assettable.require_find(ex->out_token_id, "unrecog output token id");
-      stats out_stattable(aout->contract_name, aout->symbol.raw());
-      auto stout = out_stattable.require_find(aout->symbol.raw(), "can't stat symbol");
-      uint64_t out_amount64 = amount_from(stout->supply.symbol, ex->out_amount);
-      accounts out_accttable(aout->contract_name, get_self().value);
-      auto acout = out_accttable.find(aout->symbol.raw());
-      uint64_t out_bal_before = 0;
-      if(acout != out_accttable.end()) {
-        out_bal_before = acout->balance.amount;
-      }
+        auto aout = assettable.require_find(efp.out_token_id, "unrecog output token id");
+        stats out_stattable(aout->contract_name, aout->symbol.raw());
+        auto stout = out_stattable.require_find(aout->symbol.raw(), "can't stat symbol");
+        uint64_t out_amount64 = amount_from(stout->supply.symbol, efp.out_amount);
+        accounts out_accttable(aout->contract_name, get_self().value);
+        auto acout = out_accttable.find(aout->symbol.raw());
+        uint64_t out_bal_before = 0;
+        if(acout != out_accttable.end()) {
+          out_bal_before = acout->balance.amount;
+        }
 
-      // do balancer computation again (balances may have changed)
-      double lc, lnc;
-      bool input_is_exact = parse_mod_in(ex->mods);
-      int64_t in_bal_after, out_bal_after, computed_amt;
-      if (input_is_exact) {
+        // do balancer computation 
+        double lc, lnc;
+        int64_t in_bal_after, out_bal_after, computed_amt;
         in_bal_after = in_bal_before + in_amount64;
         lc = log((double)in_bal_after/in_bal_before);
         lnc = -(ain->weight/aout->weight * lc);
         out_bal_after = llround(out_bal_before * exp(lnc));
         computed_amt = out_bal_before - out_bal_after;
         check(computed_amt >= out_amount64, "output below limit");
-      } else {
-        out_bal_after = out_bal_before - out_amount64;
-        check(out_bal_after > 0, "insufficient pool bal output token");
-        lc = log((double)out_bal_after/out_bal_before);
-        lnc = -(aout->weight/ain->weight * lc);
-        in_bal_after = llround(in_bal_before * exp(lnc));
-        computed_amt = in_bal_after - in_bal_before;
-        check(computed_amt <= in_amount64, "input over limit");
-      }
-      int64_t in_surplus = 0;
-      asset out_qty;
-      if(input_is_exact) {
+
+        int64_t in_surplus = 0;
+        asset out_qty;
         check(in_amount64 == quantity.amount, "transfer qty mismatched to prep");
         out_qty = asset(computed_amt, stout->supply.symbol);
-      } else {
-        in_surplus = quantity.amount - computed_amt;
-        check(in_surplus >= 0, "insufficient amount transferred");
-        out_qty = asset(out_amount64, stout->supply.symbol);
+      } else { // output quantity is exact
+        exprepto_params etp = unpack<exprepto_params>(prep_action.data.data(), prep_action.data.size());
+        
       }
-      // send exchange output to recipient 
+            // send exchange output to recipient 
       action (
         permission_level{get_self(), "active"_n},
         aout->contract_name,
@@ -551,8 +539,16 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
           std::make_tuple(get_self(), ex->sender, overpayment, std::string("oswaps exchange refund overpayment"))
         ).send();
       }
-      expreptable.erase(ex); 
+    } else { 
+      check_string = "malformed oswaps trx: invalid prep action";
+      goto check_out;
     }
+    txset.remove();
+    return;
+        
+    check_out:
+    txset.remove();
+    check(false, check_string);
 }
 
 void oswaps::sub_balance( const name& owner, const asset& value ) {
