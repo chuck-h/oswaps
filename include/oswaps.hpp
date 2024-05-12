@@ -2,6 +2,7 @@
 #include <eosio/eosio.hpp>
 #include <eosio/crypto.hpp>
 #include <eosio/singleton.hpp>
+#include <eosio/transaction.hpp>
 #include <algorithm>
 
 using namespace eosio;
@@ -102,6 +103,17 @@ CONTRACT oswaps : public contract {
           * @param symbol - the symbol of the affected token
       */
       ACTION unfreeze(name actor, uint64_t token_id, string symbol);
+      
+
+    typedef struct statusEntry {
+      uint64_t token_id;
+      asset balance;
+      name contract;
+    } statusEntry;
+    typedef struct poolStatus {
+      std::vector<statusEntry> status_entries;
+    } poolStatus;
+    
       /**
           * The `querypool` action returns an array reporting on the balances and
           *   weights in the pool. This informations is intended to enable the caller
@@ -109,7 +121,7 @@ CONTRACT oswaps : public contract {
           *
           * @param token_id_list - an array of numerical token identifiers 
       */
-      [[eosio::action, eosio::read_only]] poolStatus querypool(std::vector<uint64_t> token_id_list);
+      [[eosio::action, eosio::read_only]] oswaps::poolStatus querypool(std::vector<uint64_t> token_id_list);
 
       /**
           * The `createasseta` creates an entry in the asset table for an
@@ -126,7 +138,7 @@ CONTRACT oswaps : public contract {
           *
           * @result - the token_id for this asset
       */
-      [[eosio::action]] uint64_t createasseta(
+      ACTION createasseta(
               name actor, string chain, name contract, symbol_code symbol, string meta);
 
       /**
@@ -255,15 +267,9 @@ CONTRACT oswaps : public contract {
       [[eosio::on_notify("*::transfer")]]
       void ontransfer(name from, name to, eosio::asset quantity, string memo);
 
-    struct statusEntry {
-      uint64_t token_id,
-      asset balance,
-      name contract,
+    
 
-    }
-    struct poolStatus {
-      std::vector<statusEntry> status_entries
-    }
+    
     struct addliqprep_params {
       name account;
       uint64_t token_id;
@@ -271,7 +277,28 @@ CONTRACT oswaps : public contract {
       float weight;
       EOSLIB_SERIALIZE( addliqprep_params, (account)(token_id)(amount)(weight) )
     };
-    
+    struct exprepfrom_params {
+      name sender;
+      name recipient;
+      uint64_t in_token_id;
+      uint64_t out_token_id;
+      string in_amount;
+      string memo;
+      EOSLIB_SERIALIZE( exprepfrom_params,
+        (sender)(recipient)(in_token_id)(out_token_id)(in_amount)(memo) )
+    };
+    struct exprepto_params {
+      name sender;
+      name recipient;
+      uint64_t in_token_id;
+      uint64_t out_token_id;
+      string out_amount;
+      string memo;
+      EOSLIB_SERIALIZE( exprepto_params,
+        (sender)(recipient)(in_token_id)(out_token_id)(out_amount)(memo) )
+
+    };
+ 
   private:
 
       /********** standard token-contract tables ***********/
@@ -311,10 +338,12 @@ CONTRACT oswaps : public contract {
         checksum256 by_chain() const { return chain_code; }
       };
      
-      // for temporary storage of prep transaction
-      TABLE tx { // singleton, scoped by contract account name
+      // for transient storage of prep action for immediately following transfer
+      TABLE txtemp { // singleton, scoped by contract account name
         std::string txdata;
-      } tx_row;
+
+        //uint64_t primary_key() const { return 0; } // single row
+      };
 
       typedef eosio::singleton< "configs"_n, config > configs;
       typedef eosio::multi_index< "configs"_n, config >  dump_for_config;
@@ -322,11 +351,15 @@ CONTRACT oswaps : public contract {
                < "bychain"_n,
                  const_mem_fun<assettypea, checksum256, &assettypea::by_chain > >
                > assetsa;
-      typedef eosio::singleton< "tx"_n, tx > txx;
-      typedef eosio::multi_index< "tx"_n, tx >  dump_for_tx;
+      typedef eosio::singleton< "tx"_n, txtemp >  txx;
 
       void sub_balance( const name& owner, const asset& value );
       void add_balance( const name& owner, const asset& value, const name& ram_payer );
+      void save_transaction(name entry);
+      inline void check_clean(txx& dataset, string message) {
+        dataset.remove();
+        check(false, message);
+      }
 };
 
 
