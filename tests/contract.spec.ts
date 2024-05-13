@@ -1,13 +1,13 @@
 const { Blockchain, nameToBigInt, symbolCodeToBigInt, addInlinePermission,
-        expectToThrow } = require("@proton/vert");
-const { Asset, TimePoint } = require("@greymass/eosio");
+        expectToThrow, } = require("@proton/vert");
+const { Asset, TimePoint, Transaction, Action, Name, Serializer, PermissionLevel, Struct } = require("@greymass/eosio");
 const { assert, expect } = require("chai");
 const blockchain = new Blockchain()
 
 // Load contract (use paths relative to the root of the project)
-const oswaps = blockchain.createContract('oswaps', 'fyartifacts/oswaps')
-const token = blockchain.createContract('token', 'fyartifacts/token')
-const token2 = blockchain.createContract('token2', 'fyartifacts/token')
+const oswaps = blockchain.createContract('oswaps', 'build/oswaps')
+const token = blockchain.createContract('token', 'build/token')
+const token2 = blockchain.createContract('token2', 'build/token')
 const symAZURES = Asset.SymbolCode.from('AZURES')
 const symBURGS = Asset.SymbolCode.from('BURGS')
 
@@ -40,15 +40,15 @@ describe('Oswaps', () => {
     });
     it('did something', async () => {
         console.log('configure')
-    	await oswaps.actions.init(['user2', 10000, 'Telos']).send('oswaps@owner')
+    	await oswaps.actions.init(['user2', 'Telos']).send('oswaps@owner')
         const cfg = oswaps.tables.configs(nameToBigInt('oswaps')).getTableRows()
         assert.deepEqual(cfg, [ {chain_id: "4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11",
-            last_nonce: 1111, last_token_id: 0, manager: "user2", nonce_life_msec: 10000 } ] )
+            last_token_id: 0, manager: "user2"} ] )
         console.log('reconfigure')
-    	await oswaps.actions.init(['manager', 10000, 'Telos']).send('user2@active')
+    	await oswaps.actions.init(['manager', 'Telos']).send('user2@active')
         const cfg2 = oswaps.tables.configs(nameToBigInt('oswaps')).getTableRows()
         assert.deepEqual(cfg2, [ {chain_id: "4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11",
-            last_nonce: 1111, last_token_id: 0, manager: "manager", nonce_life_msec: 10000 } ] )
+            last_token_id: 0, manager: "manager" } ] )
         console.log('create assets')
         await oswaps.actions.createasseta(['issuera', 'Telos', 'token', 'AZURES', '']).send('issuera@active')
         await oswaps.actions.createasseta(['issuerb', 'Telos', 'token', 'BURGS', '']).send('issuerb@active')
@@ -58,18 +58,54 @@ describe('Oswaps', () => {
               contract_name: 'token', symbol: 'AZURES', active: true, metadata: '', weight: '0.0000000' },
             { token_id: 2, chain_code: '4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11',
               contract_name: 'token', symbol: 'BURGS', active: true, metadata: '', weight: '0.0000000' } ] )
-        console.log('add AZURES liquidity 1 - prep')
-        starttime = new Date()
-        starttime.setSeconds(0, 0)
-        blockchain.setTime(TimePoint.fromMilliseconds(starttime.valueOf()))
-        starttimeString = starttime.toISOString().slice(0, -1);
-        await oswaps.actions.addliqprep(['issuera', 1, '10.0000 AZURES', 1.00]).send('issuera@active')
-        rvbuf = Buffer.from(blockchain.actionTraces[0].returnValue)
-        rv = new Int32Array(rvbuf.buffer, rvbuf.byteOffset, 1)[0]
+        console.log('add AZURES liquidity')
+       
+/*
+        const action = Action.from({
+            authorization: [
+                {
+                    actor: 'corecorecore',
+                    permission: 'active',
+                },
+            ],
+            account: 'eosio.token',
+            name: 'transfer',
+            data: Transfer.from({
+                from: 'corecorecore',
+                to: 'teamgreymass',
+                quantity: '0.0042 EOS',
+                memo: 'eosio-core is the best <3',
+            }),
+        })
+
+        tx = Transaction.from({
+          expiration: 0,
+          ref_block_num: 0,
+          ref_block_prefix: 0,
+          actions: [  { account: oswaps.name , name: Name.from('addliqprep'),
+                       authorization: [PermissionLevel.from({
+                         actor: 'issuera', permission: 'active'
+                       })],
+                       data: Serializer.encode({
+                         account: Name.from('issuera'),
+                         token_id: 1,
+                         amount: '10.0000 AZURES',
+                         weight: 1.00,
+                       }).array,
+                       permission: 'active'
+                     }  ] 
+          }, oswaps.abi)
+
+        console.log("built tx");  
+        */
+               
+        //await oswaps.actions.addliqprep(['issuera', 1, '10.0000 AZURES', 1.00]).send('issuera@active')
+        //rvbuf = Buffer.from(blockchain.actionTraces[0].returnValue)
+        //rv = new Int32Array(rvbuf.buffer, rvbuf.byteOffset, 1)[0]
         //console.log(rv)
-        rows = oswaps.tables.adpreps([nameToBigInt('oswaps')]).getTableRows()
-        const expires = new Date(starttime.getTime()+10000)
-        const expectedExpireString = expires.toISOString().slice(0,-1)
+        //rows = oswaps.tables.adpreps([nameToBigInt('oswaps')]).getTableRows()
+        //const expires = new Date(starttime.getTime()+10000)
+        //const expectedExpireString = expires.toISOString().slice(0,-1)
         assert.deepEqual(rows, [ { nonce: 1112, expires: expectedExpireString, account: 'issuera',
             token_id: 1, amount: '10.0000 AZURES', weight: '1.0000000' } ] )
         console.log('add AZURES liquidity 2 - transfer')
