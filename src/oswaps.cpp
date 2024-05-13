@@ -146,6 +146,7 @@ void oswaps::createasseta(name actor, string chain, name contract, symbol_code s
   cfg.last_token_id += 1;
   configset.set(cfg, get_self());
   assettable.emplace(actor, [&]( auto& s ) {
+    s.token_id = cfg.last_token_id;
     s.chain_code = chain_code;
     s.contract_name = contract;
     s.symbol = symbol;
