@@ -37,7 +37,7 @@ string sym_from_id(uint64_t token_id, string prefix) {
 
 void oswaps::save_transaction(name entry) {
   auto size = transaction_size();
-  printf("tx size %ld", size);
+  printf("saved tx, size %ld ", size);
   char *   buffer = (char *)(512 < size ? malloc(size) : alloca(size));
   uint32_t read   = read_transaction(buffer, size);
   check(size == read, "read_transaction failed");
