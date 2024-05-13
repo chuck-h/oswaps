@@ -108,7 +108,7 @@ CONTRACT oswaps : public contract {
     typedef struct statusEntry {
       uint64_t token_id;
       asset balance;
-      name contract;
+      float weight;
     } statusEntry;
     typedef struct poolStatus {
       std::vector<statusEntry> status_entries;

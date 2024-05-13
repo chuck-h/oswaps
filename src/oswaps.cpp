@@ -127,7 +127,7 @@ oswaps::poolStatus oswaps::querypool(std::vector<uint64_t> token_id_list){
     statusEntry e;
     e.token_id = token_id;
     e.balance = balance;
-    e.contract = contract;
+    e.weight = a->weight;
     rv.status_entries.push_back(e);
   }
   return rv;
