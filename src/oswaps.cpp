@@ -320,26 +320,18 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
     }
 
     check(to == get_self(), "This transfer is not for oswaps"); // dispatch error?
-    if (quantity.amount < 0) {
-      check_clean(txset, "transfer quantity must be positive");
-    }
+    check(quantity.amount >= 0, "transfer quantity must be positive");
     name tkcontract = get_first_receiver();
-    //print("oswaps_ontransfer|");
 
     // analyze the stored transaction
-
     auto tx = txset.get();
     size_t size = tx.txdata.length();
     //printf("retrieved serialized tx, size %d ", size);
     transaction trx = unpack<transaction>(tx.txdata.data(), size);
     int action_count = trx.actions.size();
-    if (action_count <2) {
-      check_clean(txset, "malformed oswaps trx, <2 actions");
-    }
+    check (action_count >= 2, "malformed oswaps trx, <2 actions");
     auto prep_action = trx.actions[action_count-2]; // should be the prep action
-    if (prep_action.account != get_self()) {
-      check_clean(txset, "malformed oswaps tx, prep should precede transfer");
-    }
+    check(prep_action.account == get_self(), "malformed oswaps tx, prep should precede transfer");
     name prep_type = prep_action.name;
     assetsa assettable(get_self(), get_self().value);
     
@@ -356,10 +348,7 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
       uint64_t amount64 = amount_from(st->supply.symbol, ap.amount);
       check(amount64 == quantity.amount, "transfer qty mismatched to prep");      
       accounts accttable(a->contract_name, get_self().value);
-      auto ac = accttable.find(a->symbol.raw());
-      if(ac == accttable.end()) {
-        check_clean(txset, "no pool balance after transfer in");
-      }
+      auto ac = accttable.require_find(a->symbol.raw(), "no pool balance after transfer in");
       // must back out transfer which just occurred
       uint64_t bal_before = ac->balance.amount - quantity.amount;
       float new_weight = ap.weight;
@@ -402,25 +391,16 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
         recipient = efp.recipient;
         sender = efp.sender;
         auto ain = assettable.require_find(efp.in_token_id, "unrecog input token id");
-        if (ain->contract_name != tkcontract) {
-          check_clean(txset, "wrong token contract");
-        }
+        check(ain->contract_name == tkcontract, "wrong token contract");
         check(ain->symbol == quantity.symbol.code(), "transfer symbol mismatched to prep");
-
         stats in_stattable(ain->contract_name, ain->symbol.raw());
         auto stin = in_stattable.require_find(ain->symbol.raw(), "can't stat symbol");
         uint64_t in_amount64 = amount_from(stin->supply.symbol, efp.in_amount);
         accounts in_accttable(ain->contract_name, get_self().value);
-        auto acin = in_accttable.find(ain->symbol.raw());
-        if(acin == in_accttable.end()) {
-          check_clean(txset, "no pool balance after transfer in");        
-        }
+        auto acin = in_accttable.require_find(ain->symbol.raw(), "no pool balance after transfer in");
         // must back out transfer which just occurred
         uint64_t in_bal_before = acin->balance.amount - quantity.amount;
-        if (in_bal_before <= 0) {
-          check_clean(txset, "zero input balance, can't compute swap");                
-        }
-
+        check(in_bal_before > 0, "zero input balance, can't compute swap");                
         auto aout = assettable.require_find(efp.out_token_id, "unrecog output token id");
         out_contract = aout->contract_name;
         stats out_stattable(aout->contract_name, aout->symbol.raw());
@@ -441,7 +421,6 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
         lnc = -(ain->weight/aout->weight * lc);
         out_bal_after = llround(out_bal_before * exp(lnc));
         computed_amt = out_bal_before - out_bal_after;
-        //check(computed_amt >= out_amount64, "output below limit");
 
         check(in_amount64 == quantity.amount, "transfer qty mismatched to prep");
         out_qty = asset(computed_amt, stout->supply.symbol);
@@ -451,23 +430,16 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
         recipient = etp.recipient;
         sender = etp.sender;
         auto ain = assettable.require_find(etp.in_token_id, "unrecog input token id");
-        if (ain->contract_name != tkcontract) {
-          check_clean(txset, "wrong token contract");
-        }
+        check(ain->contract_name == tkcontract, "wrong token contract");
         check(ain->symbol == quantity.symbol.code(), "transfer symbol mismatched to prep");
         stats in_stattable(ain->contract_name, ain->symbol.raw());
         auto stin = in_stattable.require_find(ain->symbol.raw(), "can't stat symbol");
         //uint64_t in_amount64 = amount_from(stin->supply.symbol, etp.in_amount);
         accounts in_accttable(ain->contract_name, get_self().value);
-        auto acin = in_accttable.find(ain->symbol.raw());
-        if(acin == in_accttable.end()) {
-          check_clean(txset, "no pool balance after transfer in");      
-        }
+        auto acin = in_accttable.require_find(ain->symbol.raw(), "no pool balance after transfer in");
         // must back out transfer which just occurred
         uint64_t in_bal_before = acin->balance.amount - quantity.amount;
-        if (in_bal_before <= 0) {
-          check_clean(txset, "zero input balance, can't compute swap");                
-        }
+        check(in_bal_before > 0, "zero input balance, can't compute swap");                
         auto aout = assettable.require_find(etp.out_token_id, "unrecog output token id");
         out_contract = aout->contract_name;
         stats out_stattable(aout->contract_name, aout->symbol.raw());
@@ -490,9 +462,7 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
         computed_amt = in_bal_after - in_bal_before;
         
         in_surplus = quantity.amount - computed_amt;
-        if (in_surplus < 0) {
-          check_clean(txset, "insufficient amount transferred");
-        }
+        check(in_surplus >= 0, "insufficient amount transferred in");
         out_qty = asset(out_amount64, stout->supply.symbol);
 
       }
@@ -515,7 +485,7 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
         ).send();
       }
     } else { 
-      check_clean(txset, "malformed oswaps trx: invalid prep action");
+      check(false, "malformed oswaps trx: invalid prep action");
     }
 
     txset.remove();

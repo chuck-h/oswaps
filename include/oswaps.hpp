@@ -362,10 +362,6 @@ CONTRACT oswaps : public contract {
       void sub_balance( const name& owner, const asset& value );
       void add_balance( const name& owner, const asset& value, const name& ram_payer );
       void save_transaction(name entry, uint64_t token_id);
-      inline void check_clean(txx& dataset, string message) {
-        dataset.remove();
-        check(false, message);
-      }
 };
 
 
