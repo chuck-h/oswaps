@@ -346,7 +346,6 @@ CONTRACT oswaps : public contract {
       };
 
       typedef eosio::singleton< "configs"_n, config > configs;
-      typedef eosio::multi_index< "configs"_n, config >  dump_for_config;
       typedef eosio::multi_index<"assetsa"_n, assettypea, indexed_by
                < "bychain"_n,
                  const_mem_fun<assettypea, checksum256, &assettypea::by_chain > >

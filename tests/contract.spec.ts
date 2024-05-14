@@ -246,6 +246,24 @@ describe('Oswaps', () => {
         balances = [ oswaps.tables.accounts([nameToBigInt('issuera')]).getTableRows(),
              oswaps.tables.accounts([nameToBigInt('issuerb')]).getTableRows() ]
         assert.deepEqual(balances, [ [ {balance:'5.0000 LIQB'}], [{balance:'10.0000 LIQC'}] ])
+        
+        console.log('add AZURES liquidity with zero weight')
+        await blockchain.applyTransaction(Transaction.from({
+          expiration: 0, ref_block_num: 0, ref_block_prefix: 0,
+          actions: [ addliqprepAction( oswaps, 'issuera', 1, '4.5732 AZURES', 0.00),
+                     transferAction(token, 'issuera', 'oswaps', '4.5732 AZURES', 'yep') ] 
+        }))
+        //console.log(blockchain.console)
+        rows = oswaps.tables.assetsa(nameToBigInt('oswaps')).getTableRows()
+        assert.deepEqual(rows, [ 
+            { token_id: 1, chain_code: '4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11',
+              contract_name: 'token', symbol: 'AZURES', active: true, metadata: '', weight: '1.0000000' },
+            { token_id: 2, chain_code: '4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11',
+              contract_name: 'token', symbol: 'BURGS', active: true, metadata: '', weight: '1.0000000' } ] )
+
+        balances = [ token.tables.accounts([nameToBigInt('oswaps')]).getTableRows(),
+            oswaps.tables.accounts([nameToBigInt('issuera')]).getTableRows() ]
+        assert.deepEqual(balances, [ [ {balance:'10.4562 BURGS'}, {balance:'9.1464 AZURES'}], [{balance:'9.5732 LIQB'}] ])
 
     });
 })
