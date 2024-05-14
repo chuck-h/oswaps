@@ -298,6 +298,13 @@ CONTRACT oswaps : public contract {
         (sender)(recipient)(in_token_id)(out_token_id)(out_amount)(memo) )
 
     };
+    struct transfer_params {
+      name from;
+      name to;
+      asset quantity;
+      string memo;
+      EOSLIB_SERIALIZE( transfer_params, (from)(to)(quantity)(memo) )
+    };
  
   private:
 
@@ -354,7 +361,7 @@ CONTRACT oswaps : public contract {
 
       void sub_balance( const name& owner, const asset& value );
       void add_balance( const name& owner, const asset& value, const name& ram_payer );
-      void save_transaction(name entry);
+      void save_transaction(name entry, uint64_t token_id);
       inline void check_clean(txx& dataset, string message) {
         dataset.remove();
         check(false, message);

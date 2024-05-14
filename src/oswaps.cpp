@@ -35,22 +35,31 @@ string sym_from_id(uint64_t token_id, string prefix) {
   }
 }
 
-void oswaps::save_transaction(name entry) {
+void oswaps::save_transaction(name entry, uint64_t token_id) {
   auto size = transaction_size();
   //printf("saved tx, size %ld ", size);
   char *   buffer = (char *)(512 < size ? malloc(size) : alloca(size));
   uint32_t read   = read_transaction(buffer, size);
   check(size == read, "read_transaction failed");
   transaction trx = unpack<transaction>(buffer, size);  
-  // validations to do
-  //   trx.actions() gives us a vector of the actions
-  //   check that the last action is a transfer to oswaps
-  //    (this should guarantee that the eosio::notify gets triggered
-  //      to execute and clean up the stored transaction)
-  //   check that the next-to-last action is oswaps `entry` 
-  //    (that should be the current action, but we can't prove it) 
+  // validation on trx.actions
+  //   check that the last action transfers the right token to oswaps
+  //   check that the next-to-last action is oswaps `entry` action
+  assetsa assettable(get_self(), get_self().value);
+  auto a = assettable.require_find(token_id, "unrecog token id");  
+  auto final_action = trx.actions.back();
+  check(final_action.name == "transfer"_n,
+    "final action must be token transfer");
+  transfer_params tp = unpack<transfer_params>(final_action.data.data(), final_action.data.size());
+  check(tp.to==get_self() && tp.quantity.symbol.code()==a->symbol
+    && final_action.account == a->contract_name,
+    "token transfer parameters don't match prep");
+  action should_be_this_action = *(trx.actions.rbegin()+1);
+  check(should_be_this_action.name == entry
+    && should_be_this_action.account == get_self(),
+    "prep action must be next-to-last in transaction ");
+  // save serialized transaction to txx singleton
   std::string data(buffer, size);
-
   txx txset(get_self(), get_self().value);
   txtemp tx;
   tx.txdata = data;
@@ -251,20 +260,20 @@ void oswaps::withdraw(name account, uint64_t token_id, string amount, float weig
 void oswaps::addliqprep(name account, uint64_t token_id,
                             string amount, float weight) {
                           
-  save_transaction("addliqprep"_n);
+  save_transaction("addliqprep"_n, token_id);
 
 }
 
 void oswaps::exprepfrom(
            name sender, name recipient, uint64_t in_token_id, uint64_t out_token_id,
            string in_amount, string memo) {
-  save_transaction("exprepfrom"_n);
+  save_transaction("exprepfrom"_n, in_token_id);
 }
 
 void oswaps::exprepto(
            name sender, name recipient, uint64_t in_token_id, uint64_t out_token_id,
            string out_amount, string memo) {
-  save_transaction("exprepto"_n);
+  save_transaction("exprepto"_n, in_token_id);
 }
 
 void oswaps::transfer( const name& from, const name& to, const asset& quantity,
