@@ -6,11 +6,19 @@ A design paper is located at https://docs.google.com/document/d/1oHhCGfU-CEjdKmq
 
 ## Status
 
-Under development
+**Under development**.
+
+As of 5/2024 current development is in the `rev2` branch, which has breaking changes to the contract API. 
+A proof-of-concept web interface for swaps in under development at https://github.com/chuck-h/oswapweb .
+
+With `rev2` development and testing is being migrated to https://github.com/nsjames/fuckyea
 
 # Setup
 
 ### Note
+
+Refer to https://github.com/nsjames/fuckyea/blob/main/README.md for use of the new development platform in `rev2`.
+The description below refers to an earlier development platform which is deprecated.
 
 The development scripts were ported from https://github.com/JoinSEEDS/seeds-smart-contracts and may not function well.
 
