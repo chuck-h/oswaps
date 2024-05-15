@@ -18,6 +18,8 @@ With `rev2` development and testing is being migrated to https://github.com/nsja
 ### Note
 
 Refer to https://github.com/nsjames/fuckyea/blob/main/README.md for use of the new development platform in `rev2`.
+![image](https://github.com/chuck-h/oswaps-smart-contracts/assets/2141014/99a0fb7d-d0d2-4482-9b82-09e46bb7024b)
+
 The description below refers to an earlier development platform which is deprecated.
 
 The development scripts were ported from https://github.com/JoinSEEDS/seeds-smart-contracts and may not function well.
