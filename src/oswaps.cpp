@@ -61,6 +61,9 @@ void oswaps::save_transaction(name entry, uint64_t token_id) {
   // save serialized transaction to txx singleton
   std::string data(buffer, size);
   txx txset(get_self(), get_self().value);
+  if (txset.exists()) {
+    print("replacing unexpected saved transaction");
+  }  
   txtemp tx;
   tx.txdata = data;
   txset.set(tx, get_self());
@@ -309,7 +312,6 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
     // if not, this is an unrestricted transfer into oswaps
     // [should we also require a confirming memo field?]
     txx txset(get_self(), get_self().value);
-
     if (!txset.exists()) { 
       return;
     }
