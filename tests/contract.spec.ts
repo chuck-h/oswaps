@@ -145,6 +145,25 @@ describe('Oswaps', () => {
             oswaps.tables.accounts([nameToBigInt('issuera')]).getTableRows() ]
         assert.deepEqual(balances, [ [ {balance:'10.0000 AZURES'}], [{balance:'10.0000 LIQB'}] ])
         
+        /* check for sub_balance "overdrawn" error msg
+        console.log('withdraw liquidity burp')
+        
+        // skip this block to get "no balance entry" error
+        console.log('add AZURES liquidity thru issuerb')
+        await token.actions.transfer(['issuera', 'issuerb', '2.0000 AZURES', '']).send('issuera')
+        await blockchain.applyTransaction(Transaction.from({
+          expiration: 0, ref_block_num: 0, ref_block_prefix: 0,
+          actions: [ addliqprepAction( oswaps, 'issuerb', 1, '2.0000 AZURES', 0.00),
+                     transferAction(token, 'issuerb', 'oswaps', '2.0000 AZURES', 'yep') ] 
+        }))
+        
+        await oswaps.actions.withdraw(['issuerb', 1, '5.0000 AZURES', 0.00]).send('manager')
+        balances = [ token.tables.accounts([nameToBigInt('oswaps')]).getTableRows(),
+            oswaps.tables.accounts([nameToBigInt('issuera')]).getTableRows() ]
+        assert.deepEqual(balances, [ [ {balance:'5.0000 AZURES'}], [{balance:'5.0000 LIQB'}] ])
+        //console.log(blockchain.console)
+        */
+        
         console.log('withdraw liquidity')
         await oswaps.actions.withdraw(['issuera', 1, '5.0000 AZURES', 0.00]).send('manager')
         balances = [ token.tables.accounts([nameToBigInt('oswaps')]).getTableRows(),

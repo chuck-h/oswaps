@@ -243,8 +243,10 @@ void oswaps::withdraw(name account, uint64_t token_id, string amount, float weig
   const auto& lst = lstatstable.get( liq_sym_code.raw() );
   asset lqty = qty;
   lqty.symbol = symbol(liq_sym_code, qty.symbol.precision());
+  // TODO: execute this as an inline transfer so history is clear
   sub_balance( account, lqty );
   add_balance( get_self(), lqty, get_self()); 
+  
   action (
     permission_level{get_self(), "active"_n},
     get_self(),
@@ -486,7 +488,7 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
           std::make_tuple(get_self(), sender, overpayment, std::string("oswaps exchange refund overpayment"))
         ).send();
       }
-    } else { 
+    } else { // TODO: handle withdraw action (receive transfer & burn)
       check(false, "malformed oswaps trx: invalid prep action");
     }
 
@@ -495,9 +497,13 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
 
 void oswaps::sub_balance( const name& owner, const asset& value ) {
    accounts from_acnts( get_self(), owner.value );
-
-   const auto& from = from_acnts.get( value.symbol.code().raw(), "no balance object found" );
-   check( from.balance.amount >= value.amount, "overdrawn balance" );
+   
+   const auto& from = from_acnts.get( value.symbol.code().raw(),
+     (value.symbol.code().to_string()+": no balance entry for "
+     + owner.to_string()).c_str() );
+   check( from.balance.amount >= value.amount,
+     (value.symbol.code().to_string()+": overdrawn balance for "
+     + owner.to_string()).c_str() );
 
    from_acnts.modify( from, same_payer, [&]( auto& a ) {
          a.balance -= value;
@@ -535,7 +541,6 @@ void oswaps::retire( const asset& quantity, const string& memo )
     check( quantity.amount > 0, "must retire positive quantity" );
 
     check( quantity.symbol == st.supply.symbol, "symbol precision mismatch" );
-
     statstable.modify( st, same_payer, [&]( auto& s ) {
        s.supply -= quantity;
     });
