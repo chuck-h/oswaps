@@ -237,23 +237,40 @@ void oswaps::withdraw(name account, uint64_t token_id, string amount, float weig
   assettable.modify(a, same_payer, [&](auto& s) {
     s.weight = new_weight;
   });
-  // burn LIQ tokens
+  // burn LIQ tokens using saved transaction
+  
+  auto size = transaction_size();
+  //printf("saved tx, size %ld ", size);
+  char *   buffer = (char *)(512 < size ? malloc(size) : alloca(size));
+  uint32_t read   = read_transaction(buffer, size);
+  check(size == read, "read_transaction failed");
+  transaction trx = unpack<transaction>(buffer, size);  
+  auto final_action = trx.actions.back();
+  check(final_action.name == "withdraw"_n
+    && final_action.account == get_self(),
+    "final action must be withdraw");
+  // save serialized transaction to txx singleton
+  std::string data(buffer, size);
+  txx txset(get_self(), get_self().value);
+  if (txset.exists()) {
+    print("replacing unexpected saved transaction");
+  }  
+  txtemp tx;
+  tx.txdata = data;
+  txset.set(tx, get_self());
+  // send the LIQ tokens home to retire
   auto liq_sym_code = symbol_code(sym_from_id(token_id, "LIQ"));
   stats lstatstable( get_self(), liq_sym_code.raw() );
   const auto& lst = lstatstable.get( liq_sym_code.raw() );
   asset lqty = qty;
   lqty.symbol = symbol(liq_sym_code, qty.symbol.precision());
-  // TODO: execute this as an inline transfer so history is clear
-  sub_balance( account, lqty );
-  add_balance( get_self(), lqty, get_self()); 
-  
   action (
     permission_level{get_self(), "active"_n},
     get_self(),
-    "retire"_n,
-    std::make_tuple(lqty, std::string("oswaps withdrawal for "+account.to_string()))
-  ).send(); 
-
+    "transfer"_n,
+    std::make_tuple(account, get_self(), lqty, std::string("oswaps withdrawal"))
+  ).send();
+  // send out the withdrawn tokens 
   action (
     permission_level{get_self(), "active"_n},
     a->contract_name,
@@ -287,7 +304,9 @@ void oswaps::transfer( const name& from, const name& to, const asset& quantity,
     check( from != to, "cannot transfer to self" );
     // should this no-p2p restriction be under manager config control?
     check( from == get_self() || to == get_self(), "oswaps token transfers must be to/from contract");
-    require_auth( from ); // TODO: allow manager to authorize LIQxx transfers for withdrawals
+    if (!has_auth(get_self())) {
+      require_auth( from ); // only needed if we enable p2p LIQ transfers
+    }
     check( is_account( to ), "to account does not exist");
     auto sym = quantity.symbol.code();
     stats statstable( get_self(), sym.raw() );
@@ -333,9 +352,13 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
     //printf("retrieved serialized tx, size %d ", size);
     transaction trx = unpack<transaction>(tx.txdata.data(), size);
     int action_count = trx.actions.size();
-    check (action_count >= 2, "malformed oswaps trx, <2 actions");
-    auto prep_action = trx.actions[action_count-2]; // should be the prep action
-    check(prep_action.account == get_self(), "malformed oswaps tx, prep should precede transfer");
+    // check for withdraw as final action in transaction
+    auto prep_action = trx.actions[action_count-1];
+    if (!(prep_action.account == get_self() && prep_action.name == "withdraw"_n)) {
+      check (action_count >= 2, "malformed oswaps trx, <2 actions");
+      prep_action = trx.actions[action_count-2]; // should be the prep action
+      check(prep_action.account == get_self(), "malformed oswaps tx, prep should be next to final");
+    }
     name prep_type = prep_action.name;
     assetsa assettable(get_self(), get_self().value);
     
@@ -488,7 +511,15 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
           std::make_tuple(get_self(), sender, overpayment, std::string("oswaps exchange refund overpayment"))
         ).send();
       }
-    } else { // TODO: handle withdraw action (receive transfer & burn)
+    } else if (prep_type == "withdraw"_n) {
+        withdrawfrom_params wfp = unpack<withdrawfrom_params>(prep_action.data.data(), prep_action.data.size());   
+      action (
+        permission_level{get_self(), "active"_n},
+        get_self(),
+        "retire"_n,
+        std::make_tuple(quantity, std::string("oswaps withdrawal for "+wfp.account.to_string()))
+      ).send(); 
+    } else {
       check(false, "malformed oswaps trx: invalid prep action");
     }
 

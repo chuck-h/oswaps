@@ -305,6 +305,14 @@ CONTRACT oswaps : public contract {
       string memo;
       EOSLIB_SERIALIZE( transfer_params, (from)(to)(quantity)(memo) )
     };
+
+    struct withdrawfrom_params {
+      name account;
+      uint64_t token_id;
+      string amount;
+      float weight;
+      EOSLIB_SERIALIZE( withdrawfrom_params, (account)(token_id)(amount)(weight) )
+    };
  
   private:
 
