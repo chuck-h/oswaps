@@ -237,27 +237,9 @@ void oswaps::withdraw(name account, uint64_t token_id, string amount, float weig
   assettable.modify(a, same_payer, [&](auto& s) {
     s.weight = new_weight;
   });
-  // burn LIQ tokens using saved transaction
-  
-  auto size = transaction_size();
-  //printf("saved tx, size %ld ", size);
-  char *   buffer = (char *)(512 < size ? malloc(size) : alloca(size));
-  uint32_t read   = read_transaction(buffer, size);
-  check(size == read, "read_transaction failed");
-  transaction trx = unpack<transaction>(buffer, size);  
-  auto final_action = trx.actions.back();
-  check(final_action.name == "withdraw"_n
-    && final_action.account == get_self(),
-    "final action must be withdraw");
-  // save serialized transaction to txx singleton
-  std::string data(buffer, size);
-  txx txset(get_self(), get_self().value);
-  if (txset.exists()) {
-    print("replacing unexpected saved transaction");
-  }  
-  txtemp tx;
-  tx.txdata = data;
-  txset.set(tx, get_self());
+  // burn LIQ tokens 
+  cfg.withdraw_flag = true;
+  configset.set(cfg, get_self());
   // send the LIQ tokens home to retire
   auto liq_sym_code = symbol_code(sym_from_id(token_id, "LIQ"));
   stats lstatstable( get_self(), liq_sym_code.raw() );
@@ -327,24 +309,12 @@ void oswaps::transfer( const name& from, const name& to, const asset& quantity,
     add_balance( to, quantity, payer );
     
     // check whether this transfer is inline action from 'withdraw'
-    txx txset(get_self(), get_self().value);
-    if (!txset.exists()) { 
-      return;
-    }
-    if (from == get_self()) {
-      txset.remove();
-      return;
-    }
-    check(to == get_self(), "This transfer is not for oswaps"); // dispatch error?
-    auto tx = txset.get();
-    size_t size = tx.txdata.length();
-    //printf("retrieved serialized tx, size %d ", size);
-    transaction trx = unpack<transaction>(tx.txdata.data(), size);
-    int action_count = trx.actions.size();
-    auto final_action = trx.actions[action_count-1];
-    check(final_action.account == get_self()
-           && final_action.name == "withdraw"_n,
-     "expected withdraw action");
+    configs configset(get_self(), get_self().value);
+    if(!configset.exists()) { return; }
+    auto cfg = configset.get();
+    if (!cfg.withdraw_flag) { return; }
+    cfg.withdraw_flag = false;
+    configset.set(cfg, get_self());    
     action (
       permission_level{get_self(), "active"_n},
       get_self(),

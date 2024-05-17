@@ -306,14 +306,6 @@ CONTRACT oswaps : public contract {
       EOSLIB_SERIALIZE( transfer_params, (from)(to)(quantity)(memo) )
     };
 
-    struct withdrawfrom_params {
-      name account;
-      uint64_t token_id;
-      string amount;
-      float weight;
-      EOSLIB_SERIALIZE( withdrawfrom_params, (account)(token_id)(amount)(weight) )
-    };
- 
   private:
 
       /********** standard token-contract tables ***********/
@@ -337,6 +329,7 @@ CONTRACT oswaps : public contract {
         name manager;
         checksum256 chain_id;
         uint64_t last_token_id;
+        bool withdraw_flag;
       } config_row;
 
       // types of antelope tokens

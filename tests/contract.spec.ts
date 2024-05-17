@@ -118,12 +118,12 @@ describe('Oswaps', () => {
     	await oswaps.actions.init(['user2', 'Telos']).send('oswaps@owner')
         const cfg = oswaps.tables.configs(nameToBigInt('oswaps')).getTableRows()
         assert.deepEqual(cfg, [ {chain_id: "4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11",
-            last_token_id: 0, manager: "user2"} ] )
+            last_token_id: 0, manager: "user2", withdraw_flag: false} ] )
         console.log('reconfigure')
     	await oswaps.actions.init(['manager', 'Telos']).send('user2@active')
         const cfg2 = oswaps.tables.configs(nameToBigInt('oswaps')).getTableRows()
         assert.deepEqual(cfg2, [ {chain_id: "4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11",
-            last_token_id: 0, manager: "manager" } ] )
+            last_token_id: 0, manager: "manager", withdraw_flag: false} ] )
 
         console.log('create assets')
         await oswaps.actions.createasseta(['issuera', 'Telos', 'token', 'AZURES', '']).send('issuera@active')
@@ -173,8 +173,8 @@ describe('Oswaps', () => {
         console.log('check LIQ stats')
         rows = oswaps.tables.stat(symbolCodeToBigInt(symLIQB)).getTableRows()
         assert.deepEqual(rows, [ { supply: '5.0000 LIQB', max_supply: '461168601842738.7903 LIQB', issuer: 'oswaps' } ] )
+        //console.log(blockchain.console)
         
-        console.log(blockchain.console)
         console.log('add BURGS liquidity')   
         await blockchain.applyTransaction(Transaction.from({
           expiration: 0, ref_block_num: 0, ref_block_prefix: 0,
