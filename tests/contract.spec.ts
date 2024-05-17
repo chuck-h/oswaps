@@ -10,6 +10,7 @@ const token = blockchain.createContract('token', 'build/token')
 const token2 = blockchain.createContract('token2', 'build/token')
 const symAZURES = Asset.SymbolCode.from('AZURES')
 const symBURGS = Asset.SymbolCode.from('BURGS')
+const symLIQB = Asset.SymbolCode.from('LIQB')
 
 var accounts
 var rows
@@ -169,6 +170,11 @@ describe('Oswaps', () => {
         balances = [ token.tables.accounts([nameToBigInt('oswaps')]).getTableRows(),
             oswaps.tables.accounts([nameToBigInt('issuera')]).getTableRows() ]
         assert.deepEqual(balances, [ [ {balance:'5.0000 AZURES'}], [{balance:'5.0000 LIQB'}] ])
+        console.log('check LIQ stats')
+        rows = oswaps.tables.stat(symbolCodeToBigInt(symLIQB)).getTableRows()
+        assert.deepEqual(rows, [ { supply: '5.0000 LIQB', max_supply: '461168601842738.7903 LIQB', issuer: 'oswaps' } ] )
+        
+        console.log(blockchain.console)
         console.log('add BURGS liquidity')   
         await blockchain.applyTransaction(Transaction.from({
           expiration: 0, ref_block_num: 0, ref_block_prefix: 0,
@@ -222,7 +228,8 @@ describe('Oswaps', () => {
         balances = [ token.tables.accounts([nameToBigInt('oswaps')]).getTableRows(),
              token.tables.accounts([nameToBigInt('alice')]).getTableRows() ]
         assert.deepEqual(balances, [ [ {balance:'10.2062 BURGS'}, {balance:'4.8000 AZURES'}], [{balance:'0.2000 AZURES'}] ])
-        console.log(`new oswaps input balance ${JSON.stringify(balances[0].filter((e)=>(e.balance.split(' ')[1]=='BURGS')) )}`)
+        console.log(`new oswaps input balance ${JSON.stringify(balances[0]
+          .filter((e)=>(e.balance.split(' ')[1]=='BURGS')) )}`)
         
         console.log("balancer computation, exact in")
         await oswaps.actions.querypool([[1,2]]).send('bob')
@@ -259,8 +266,10 @@ describe('Oswaps', () => {
         //console.log(blockchain.console)
         balances = [ token.tables.accounts([nameToBigInt('oswaps')]).getTableRows(),
              token.tables.accounts([nameToBigInt('alice')]).getTableRows() ]
-        assert.deepEqual(balances, [ [ {balance:'10.4562 BURGS'}, {balance:'4.5732 AZURES'}], [{balance:'0.4268 AZURES'}] ])
-        console.log(`new oswaps output balance ${JSON.stringify(balances[0].filter((e)=>(e.balance.split(' ')[1]=='AZURES')) )}`)
+        assert.deepEqual(balances, [ [ {balance:'10.4562 BURGS'}, {balance:'4.5732 AZURES'}],
+          [{balance:'0.4268 AZURES'}] ])
+        console.log(`new oswaps output balance ${JSON.stringify(balances[0].
+          filter((e)=>(e.balance.split(' ')[1]=='AZURES')) )}`)
         console.log("check for liquidity tokens")
         balances = [ oswaps.tables.accounts([nameToBigInt('issuera')]).getTableRows(),
              oswaps.tables.accounts([nameToBigInt('issuerb')]).getTableRows() ]

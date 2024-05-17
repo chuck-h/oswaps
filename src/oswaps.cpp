@@ -325,6 +325,32 @@ void oswaps::transfer( const name& from, const name& to, const asset& quantity,
 
     sub_balance( from, quantity );
     add_balance( to, quantity, payer );
+    
+    // check whether this transfer is inline action from 'withdraw'
+    txx txset(get_self(), get_self().value);
+    if (!txset.exists()) { 
+      return;
+    }
+    if (from == get_self()) {
+      txset.remove();
+      return;
+    }
+    check(to == get_self(), "This transfer is not for oswaps"); // dispatch error?
+    auto tx = txset.get();
+    size_t size = tx.txdata.length();
+    //printf("retrieved serialized tx, size %d ", size);
+    transaction trx = unpack<transaction>(tx.txdata.data(), size);
+    int action_count = trx.actions.size();
+    auto final_action = trx.actions[action_count-1];
+    check(final_action.account == get_self()
+           && final_action.name == "withdraw"_n,
+     "expected withdraw action");
+    action (
+      permission_level{get_self(), "active"_n},
+      get_self(),
+      "retire"_n,
+      std::make_tuple(quantity, std::string("oswaps withdrawal"))
+    ).send();
 }
 
    
@@ -352,13 +378,10 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
     //printf("retrieved serialized tx, size %d ", size);
     transaction trx = unpack<transaction>(tx.txdata.data(), size);
     int action_count = trx.actions.size();
-    // check for withdraw as final action in transaction
-    auto prep_action = trx.actions[action_count-1];
-    if (!(prep_action.account == get_self() && prep_action.name == "withdraw"_n)) {
-      check (action_count >= 2, "malformed oswaps trx, <2 actions");
-      prep_action = trx.actions[action_count-2]; // should be the prep action
-      check(prep_action.account == get_self(), "malformed oswaps tx, prep should be next to final");
-    }
+    auto prep_action = trx.actions[action_count-2];
+    check (action_count >= 2, "malformed oswaps trx, <2 actions");
+    prep_action = trx.actions[action_count-2]; // should be the prep action
+    check(prep_action.account == get_self(), "malformed oswaps tx, prep should be next to final");
     name prep_type = prep_action.name;
     assetsa assettable(get_self(), get_self().value);
     
@@ -511,14 +534,6 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
           std::make_tuple(get_self(), sender, overpayment, std::string("oswaps exchange refund overpayment"))
         ).send();
       }
-    } else if (prep_type == "withdraw"_n) {
-        withdrawfrom_params wfp = unpack<withdrawfrom_params>(prep_action.data.data(), prep_action.data.size());   
-      action (
-        permission_level{get_self(), "active"_n},
-        get_self(),
-        "retire"_n,
-        std::make_tuple(quantity, std::string("oswaps withdrawal for "+wfp.account.to_string()))
-      ).send(); 
     } else {
       check(false, "malformed oswaps trx: invalid prep action");
     }
