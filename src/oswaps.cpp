@@ -404,12 +404,14 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
       name sender;
       name recipient;
       asset out_qty;
+      string exchange_memo;
       int64_t in_surplus = 0;
       bool input_is_exact = prep_type == "exprepfrom"_n;
       if (input_is_exact) {
         exprepfrom_params efp = unpack<exprepfrom_params>(prep_action.data.data(), prep_action.data.size());
         recipient = efp.recipient;
         sender = efp.sender;
+        exchange_memo = efp.memo;
         auto ain = assettable.require_find(efp.in_token_id, "unrecog input token id");
         check(ain->contract_name == tkcontract, "wrong token contract");
         check(ain->symbol == quantity.symbol.code(), "transfer symbol mismatched to prep");
@@ -449,6 +451,7 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
         exprepto_params etp = unpack<exprepto_params>(prep_action.data.data(), prep_action.data.size());
         recipient = etp.recipient;
         sender = etp.sender;
+        exchange_memo = etp.memo;
         auto ain = assettable.require_find(etp.in_token_id, "unrecog input token id");
         check(ain->contract_name == tkcontract, "wrong token contract");
         check(ain->symbol == quantity.symbol.code(), "transfer symbol mismatched to prep");
@@ -492,7 +495,8 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
         permission_level{get_self(), "active"_n},
         out_contract,
         "transfer"_n,
-        std::make_tuple(get_self(), recipient, out_qty, std::string("from oswaps exchange"))
+        std::make_tuple(get_self(), recipient, out_qty,
+          exchange_memo + " (from " + sender.to_string() + " via oswaps)")
       ).send();
       // refund surplus to sender
       if(in_surplus > 0) {
