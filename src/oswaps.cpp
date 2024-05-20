@@ -501,11 +501,13 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
       // refund surplus to sender
       if(in_surplus > 0) {
         asset overpayment = asset(in_surplus, quantity.symbol);
+        asset netpayment = asset(quantity.amount-in_surplus, quantity.symbol);
         action (
           permission_level{get_self(), "active"_n},
           tkcontract,
           "transfer"_n,
-          std::make_tuple(get_self(), sender, overpayment, std::string("oswaps exchange refund overpayment"))
+          std::make_tuple(get_self(), sender, overpayment,
+            std::string("oswaps exchange refund overpayment, net is ")+netpayment.to_string())
         ).send();
       }
     } else {
