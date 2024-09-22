@@ -6,7 +6,7 @@ A design paper is located at https://docs.google.com/document/d/1oHhCGfU-CEjdKmq
 
 ## Status
 
-Under development
+Under development. This contract is currently a proof-of-concept for the swapping functions. It does not implement important features from the design paper such as swap fees, authorizations for weight changes and liquidity withdrawal, and liquidity movement rate controls.
 
 # Setup
 
