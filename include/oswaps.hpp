@@ -154,6 +154,10 @@ CONTRACT oswaps : public contract {
       /**
           * The `withdraw` action withdraws liquidity while simultaneously
           *   adjusting weight-fractions in the balancer invariant formula
+          * If the weight parameter is zero, a new weight will be computed
+          * which leaves the exchange rate unchanged. If the parameter is non-zero,
+          * (i.e. price is being changed) the token will be frozen until it is
+          * re-activated by the manager with an unfreeze action.
           * [future: Token transfers occur through a rate-throttling queue which may
           *    introduce delays]
           * 
@@ -167,6 +171,10 @@ CONTRACT oswaps : public contract {
       /**
           * The `addliqprep` action adds liquidity while simultaneously
           *   adjusting weight-fractions in the balancer invariant formula
+          * If the weight parameter is zero, a new weight will be computed
+          * which leaves the exchange rate unchanged. If the parameter is non-zero,
+          * (i.e. price is being changed) the token will be frozen until it is
+          * re-activated by the manager with an unfreeze action.
           * [future: Token transfers occur through a rate-throttling queue which may
           *    introduce delays]
           * 

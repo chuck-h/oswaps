@@ -131,10 +131,13 @@ describe('Oswaps', () => {
         rows = oswaps.tables.assetsa(nameToBigInt('oswaps')).getTableRows()
         assert.deepEqual(rows, [ 
             { token_id: 1, chain_code: '4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11',
-              contract_name: 'token', symbol: 'AZURES', active: true, metadata: '', weight: '0.0000000' },
+              contract_name: 'token', symbol: 'AZURES', active: false, metadata: '', weight: '0.0000000' },
             { token_id: 2, chain_code: '4667b205c6838ef70ff7988f6e8257e8be0e1284a2f59699054a018f743b1d11',
-              contract_name: 'token', symbol: 'BURGS', active: true, metadata: '', weight: '0.0000000' } ] )
+              contract_name: 'token', symbol: 'BURGS', active: false, metadata: '', weight: '0.0000000' } ] )
 
+        console.log('unfreeze assets')
+        await oswaps.actions.unfreeze(['manager', 1, 'AZURES']).send('manager@active')
+        await oswaps.actions.unfreeze(['manager', 2, 'BURGS']).send('manager@active')
         console.log('add AZURES liquidity')
         await blockchain.applyTransaction(Transaction.from({
           expiration: 0, ref_block_num: 0, ref_block_prefix: 0,
@@ -164,7 +167,9 @@ describe('Oswaps', () => {
         assert.deepEqual(balances, [ [ {balance:'5.0000 AZURES'}], [{balance:'5.0000 LIQB'}] ])
         //console.log(blockchain.console)
         */
-        
+        console.log('unfreeze AZURES')
+        await oswaps.actions.unfreeze(['manager', 1, 'AZURES']).send('manager@active')
+       
         console.log('withdraw liquidity')
         await oswaps.actions.withdraw(['issuera', 1, '5.0000 AZURES', 0.00]).send('manager')
         balances = [ token.tables.accounts([nameToBigInt('oswaps')]).getTableRows(),
@@ -196,6 +201,9 @@ describe('Oswaps', () => {
             { token_id: 1, balance: '5.0000 AZURES', weight: '0.5000000' },
             { token_id: 2, balance: '10.0000 BURGS', weight: '1.0000000' }
         ]})
+        console.log('unfreeze BURGS')
+        await oswaps.actions.unfreeze(['manager', 2, 'BURGS']).send('manager@active')
+
         console.log("balancer computation, exact out")
         {
           // floating point calculation

@@ -115,12 +115,32 @@ void oswaps::init(name manager, string chain) {
 }
 
 void oswaps::freeze(name actor, uint64_t token_id, string symbol) {
-  check(false, "freeze not supported");
+  configs configset(get_self(), get_self().value);
+  check(configset.exists(), "not configured.");
+  auto cfg = configset.get();
+  check(actor == cfg.manager, "must be manager");
+  require_auth(actor);
+  assetsa assettable(get_self(), get_self().value);
+  auto a = assettable.require_find(token_id, "unrecog token id");
+  check(a->symbol == symbol_code(symbol), "mismatched symbol");
+  assettable.modify( a, same_payer, [&]( auto& s ) {
+    s.active = false;
+  });
 }
 
 void oswaps::unfreeze(name actor, uint64_t token_id, string symbol) {
-  check(false, "unfreeze not supported");
-};
+  configs configset(get_self(), get_self().value);
+  check(configset.exists(), "not configured.");
+  auto cfg = configset.get();
+  check(actor == cfg.manager, "must be manager");
+  require_auth(actor);
+  assetsa assettable(get_self(), get_self().value);
+  auto a = assettable.require_find(token_id, "unrecog token id");
+  check(a->symbol == symbol_code(symbol), "mismatched symbol");
+  assettable.modify( a, same_payer, [&]( auto& s ) {
+    s.active = true;
+  });
+}
 
 oswaps::poolStatus oswaps::querypool(std::vector<uint64_t> token_id_list){
   poolStatus rv;
@@ -162,7 +182,7 @@ void oswaps::createasseta(name actor, string chain, name contract, symbol_code s
     s.chain_code = chain_code;
     s.contract_name = contract;
     s.symbol = symbol;
-    s.active = true;
+    s.active = false;
     s.metadata = meta;
     s.weight = 0.0;
   });
@@ -236,6 +256,7 @@ void oswaps::withdraw(name account, uint64_t token_id, string amount, float weig
   }
   assettable.modify(a, same_payer, [&](auto& s) {
     s.weight = new_weight;
+    s.active &= (weight == 0.0);
   });
   // burn LIQ tokens 
   cfg.withdraw_flag = true;
@@ -366,7 +387,8 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
       auto st = stattable.require_find(a->symbol.raw(), "can't stat symbol");
       check(st->supply.symbol==quantity.symbol, "transfer symbol/prec mismatched to prep");
       uint64_t amount64 = amount_from(st->supply.symbol, ap.amount);
-      check(amount64 == quantity.amount, "transfer qty mismatched to prep");      
+      check(amount64 == quantity.amount, "transfer qty mismatched to prep");   
+      check(a->active, "token is frozen");   
       accounts accttable(a->contract_name, get_self().value);
       auto ac = accttable.require_find(a->symbol.raw(), "no pool balance after transfer in");
       // must back out transfer which just occurred
@@ -378,6 +400,7 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
       }
       assettable.modify(a, same_payer, [&](auto& s) {
         s.weight = new_weight;
+        s.active &= (ap.weight == 0.0);
       });
       // issue LIQ tokens to self & transfer to `from` account
       auto liq_sym_code = symbol_code(sym_from_id(ap.token_id, "LIQ"));
@@ -416,7 +439,8 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
         check(ain->contract_name == tkcontract, "wrong token contract");
         check(ain->symbol == quantity.symbol.code(), "transfer symbol mismatched to prep");
         stats in_stattable(ain->contract_name, ain->symbol.raw());
-        auto stin = in_stattable.require_find(ain->symbol.raw(), "can't stat symbol");
+        auto stin = in_stattable.require_find(ain->symbol.raw(), "can't stat input symbol");
+        check(ain->active, "input token swap is frozen");
         uint64_t in_amount64 = amount_from(stin->supply.symbol, efp.in_amount);
         accounts in_accttable(ain->contract_name, get_self().value);
         auto acin = in_accttable.require_find(ain->symbol.raw(), "no pool balance after transfer in");
@@ -426,8 +450,9 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
         auto aout = assettable.require_find(efp.out_token_id, "unrecog output token id");
         out_contract = aout->contract_name;
         stats out_stattable(aout->contract_name, aout->symbol.raw());
-        auto stout = out_stattable.require_find(aout->symbol.raw(), "can't stat symbol");
-        //uint64_t out_amount64 = amount_from(stout->supply.symbol, efp.out_amount);
+        auto stout = out_stattable.require_find(aout->symbol.raw(), "can't stat output symbol");
+        check(aout->active, "output token swap is frozen");
+        //uint64_t out_amount64 = amount_from(stout->supply);.symbol, efp.out_amount);
         accounts out_accttable(aout->contract_name, get_self().value);
         auto acout = out_accttable.find(aout->symbol.raw());
         uint64_t out_bal_before = 0;
@@ -457,6 +482,7 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
         check(ain->symbol == quantity.symbol.code(), "transfer symbol mismatched to prep");
         stats in_stattable(ain->contract_name, ain->symbol.raw());
         auto stin = in_stattable.require_find(ain->symbol.raw(), "can't stat symbol");
+        check(ain->active, "input token swap is frozen");
         //uint64_t in_amount64 = amount_from(stin->supply.symbol, etp.in_amount);
         accounts in_accttable(ain->contract_name, get_self().value);
         auto acin = in_accttable.require_find(ain->symbol.raw(), "no pool balance after transfer in");
@@ -467,6 +493,7 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
         out_contract = aout->contract_name;
         stats out_stattable(aout->contract_name, aout->symbol.raw());
         auto stout = out_stattable.require_find(aout->symbol.raw(), "can't stat symbol");
+        check(aout->active, "output token swap is frozen");
         uint64_t out_amount64 = amount_from(stout->supply.symbol, etp.out_amount);
         accounts out_accttable(aout->contract_name, get_self().value);
         auto acout = out_accttable.find(aout->symbol.raw());
