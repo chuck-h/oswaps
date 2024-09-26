@@ -388,7 +388,7 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
       check(st->supply.symbol==quantity.symbol, "transfer symbol/prec mismatched to prep");
       uint64_t amount64 = amount_from(st->supply.symbol, ap.amount);
       check(amount64 == quantity.amount, "transfer qty mismatched to prep");   
-      check(a->active, "token is frozen");   
+      check(a->active || amount64 == 0, "token is frozen");   
       accounts accttable(a->contract_name, get_self().value);
       auto ac = accttable.require_find(a->symbol.raw(), "no pool balance after transfer in");
       // must back out transfer which just occurred
@@ -402,24 +402,25 @@ void oswaps::ontransfer(name from, name to, eosio::asset quantity, string memo) 
         s.weight = new_weight;
         s.active &= (ap.weight == 0.0);
       });
-      // issue LIQ tokens to self & transfer to `from` account
-      auto liq_sym_code = symbol_code(sym_from_id(ap.token_id, "LIQ"));
-      stats lstatstable( get_self(), liq_sym_code.raw() );
-      const auto& lst = lstatstable.get( liq_sym_code.raw() );
-      asset lqty = quantity;
-      lqty.symbol = symbol(liq_sym_code, quantity.symbol.precision());
-      add_balance( get_self(), lqty, get_self() );
-      lstatstable.modify( lst, same_payer, [&]( auto& s ) {
-        s.supply += lqty;
-      });
-      action (
-        permission_level{get_self(), "active"_n},
-        get_self(),
-        "transfer"_n,
-        std::make_tuple(get_self(), from, lqty,
-           std::string("oswaps liquidity receipt "))
-      ).send();
-
+      if (quantity.amount > 0) {
+        // issue LIQ tokens to self & transfer to `from` account
+        auto liq_sym_code = symbol_code(sym_from_id(ap.token_id, "LIQ"));
+        stats lstatstable( get_self(), liq_sym_code.raw() );
+        const auto& lst = lstatstable.get( liq_sym_code.raw() );
+        asset lqty = quantity;
+        lqty.symbol = symbol(liq_sym_code, quantity.symbol.precision());
+        add_balance( get_self(), lqty, get_self() );
+        lstatstable.modify( lst, same_payer, [&]( auto& s ) {
+          s.supply += lqty;
+        });
+        action (
+          permission_level{get_self(), "active"_n},
+          get_self(),
+          "transfer"_n,
+          std::make_tuple(get_self(), from, lqty,
+             std::string("oswaps liquidity receipt "))
+        ).send();
+      }
       
     } else if (prep_type == "exprepfrom"_n || prep_type == "exprepto"_n ) {
       // exchange transaction
