@@ -149,6 +149,15 @@ describe('Oswaps', () => {
             oswaps.tables.accounts([nameToBigInt('issuera')]).getTableRows() ]
         assert.deepEqual(balances, [ [ {balance:'10.0000 AZURES'}], [{balance:'10.0000 LIQB'}] ])
         
+        /* this is only possible for tokens which allow zero-quantity transfers
+        console.log('add AZURES liquidity reset weight while frozen')
+        await blockchain.applyTransaction(Transaction.from({
+          expiration: 0, ref_block_num: 0, ref_block_prefix: 0,
+          actions: [ addliqprepAction( oswaps, 'issuera', 1, '0.0000 AZURES', 1.00),
+                     transferAction(token, 'issuera', 'oswaps', '0.0000 AZURES', 'yep') ] 
+        }))
+        */
+        
         /* check for sub_balance "overdrawn" error msg
         console.log('withdraw liquidity burp')
         
@@ -167,6 +176,7 @@ describe('Oswaps', () => {
         assert.deepEqual(balances, [ [ {balance:'5.0000 AZURES'}], [{balance:'5.0000 LIQB'}] ])
         //console.log(blockchain.console)
         */
+        
         console.log('unfreeze AZURES')
         await oswaps.actions.unfreeze(['manager', 1, 'AZURES']).send('manager@active')
        
