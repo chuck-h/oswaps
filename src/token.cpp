@@ -1,5 +1,7 @@
 #include "token.hpp" //<../include/token.hpp>
 
+//contractName:token
+
 namespace eosio {
 
 void token::create( const name&   issuer,

@@ -2,6 +2,7 @@
 #include <eosio/eosio.hpp>
 #include <eosio/crypto.hpp>
 #include <eosio/singleton.hpp>
+#include <eosio/transaction.hpp>
 #include <algorithm>
 
 using namespace eosio;
@@ -20,11 +21,12 @@ using std::string;
     *   - liquidity metering
     *   - multichain operation
     *
-    * Transfers into the oswaps contract proceed via two steps :
-    *   First, the originator submits transaction details in a "prep" action, which returns data
-    *     including a nonce, i.e. an ephemeral transaction code.
-    *   Second, the originator sends an ordinary token transfer action to the contract, with a memo
-    *     field containing the nonce; the action sent earlier is executed.
+    * Transfers into the oswaps contract proceed via a compound transaction containing two actions
+    *   In the first action, the originator submits transaction details in a "prep" action
+    *   In the second action, the originator sends an ordinary token transfer action to the contract.
+    *     The transfer triggers an "on-notify" routine which accesses the fields in the "prep"
+    *     action call, which must immediately precede the transfer in a compound transaction.
+    *   These two actions must be next-to-last and last action of the transaction, respectively.
     *
     * The contract anticipates a future ability to operate across different chains, with
     *   varying conventions for token identification. Therefore token identities are
@@ -75,13 +77,12 @@ CONTRACT oswaps : public contract {
 
       /**
           * The one-time `init` action executed by the oswaps contract account records
-          *  the manager account, nonce validity time, and chain identifier
+          *  the manager account and chain identifier
           *
           * @param manager - an account empowered to execute freeze and setparameter actions
-          * @param nonce_life_msec - the time validity window for a "prep" action nonce
           * @param chain - a well-known name or hex-encoded chain_id
       */
-      ACTION init(name manager, uint64_t nonce_life_msec, string chain);
+      ACTION init(name manager, string chain);
       
       /**
           * The `freeze` action executed by the manager or other authorized actor suspends
@@ -104,6 +105,24 @@ CONTRACT oswaps : public contract {
       ACTION unfreeze(name actor, uint64_t token_id, string symbol);
       
 
+    typedef struct statusEntry {
+      uint64_t token_id;
+      asset balance;
+      float weight;
+    } statusEntry;
+    typedef struct poolStatus {
+      std::vector<statusEntry> status_entries;
+    } poolStatus;
+    
+      /**
+          * The `querypool` action returns an array reporting on the balances and
+          *   weights in the pool. This informations is intended to enable the caller
+          *   to compute the exchange rate for an upcoming transaction.
+          *
+          * @param token_id_list - an array of numerical token identifiers 
+      */
+      [[eosio::action, eosio::read_only]] oswaps::poolStatus querypool(std::vector<uint64_t> token_id_list);
+
       /**
           * The `createasseta` creates an entry in the asset table for an
           *   antelope family token. It also creates a liquidity pool token
@@ -119,7 +138,7 @@ CONTRACT oswaps : public contract {
           *
           * @result - the token_id for this asset
       */
-      [[eosio::action]] uint64_t createasseta(
+      ACTION createasseta(
               name actor, string chain, name contract, symbol_code symbol, string meta);
 
       /**
@@ -135,6 +154,10 @@ CONTRACT oswaps : public contract {
       /**
           * The `withdraw` action withdraws liquidity while simultaneously
           *   adjusting weight-fractions in the balancer invariant formula
+          * If the weight parameter is zero, a new weight will be computed
+          * which leaves the exchange rate unchanged. If the parameter is non-zero,
+          * (i.e. price is being changed) the token will be frozen until it is
+          * re-activated by the manager with an unfreeze action.
           * [future: Token transfers occur through a rate-throttling queue which may
           *    introduce delays]
           * 
@@ -148,6 +171,10 @@ CONTRACT oswaps : public contract {
       /**
           * The `addliqprep` action adds liquidity while simultaneously
           *   adjusting weight-fractions in the balancer invariant formula
+          * If the weight parameter is zero, a new weight will be computed
+          * which leaves the exchange rate unchanged. If the parameter is non-zero,
+          * (i.e. price is being changed) the token will be frozen until it is
+          * re-activated by the manager with an unfreeze action.
           * [future: Token transfers occur through a rate-throttling queue which may
           *    introduce delays]
           * 
@@ -155,14 +182,12 @@ CONTRACT oswaps : public contract {
           * @param token_id - a numerical token identifier in the asset table
           * @param amount - the amount of asset (quantity, symbol) to add to pool;
           * @param weight - the new balancer weight (or zero)
-          *
-          * @result - a nonce identifying this transaction
       */
-      [[eosio::action]] uint32_t addliqprep(name account, uint64_t token_id,
-                                            string amount, float weight);
+      ACTION addliqprep(name account, uint64_t token_id,
+                        string amount, float weight);
 
       /**
-          * The `exchangeprep` action is a function describing a conversion
+          * The `exprepfrom` and `exprepto` actions are functions describing a conversion
           *   ("currency exchange") transaction, taking a quantity of tokens from the sender
           *   and delivering a corresponding quantity of a different token to the recipient. 
           * The conversion ratio ("exchange rate") is computed according to a multilateral
@@ -171,40 +196,45 @@ CONTRACT oswaps : public contract {
           *   and therefore depends dynamically on the pool balances B. In the small-
           *   transaction limit (no "slippage"), and with zero fees, an input of
           *   Qi tokens of type i will emit Qj = Qi * (Bj/Bi)*(Wi/Wj) tokens of type j.
-          * In the action call, both incoming and outgoing amounts are specified, but
-          *   only one of them is the "exact" or "controlling" parameter. The other
-          *   amount specifies a limit; the action will fail if the computed exchange value
-          *   is beyond the limit. The `mods` parameter (e.g. '{ "exact":"in" }' encodes
-          *   the choice of exact field. If the incoming amount is exact, the computed
-          *   outgoing value must be no less than the outgoing amount parameter. If the
-          *   outgoing amount is exact, the computed incoming value must be no more than
-          *   the value of the incoming amount parameter.
+          *
+          * In the `exprepfrom` action call, the incoming amount is specified and the outgoing
+          *   amount is to be computed by the contract.
           * 
           * 
           * @param sender - the account sourcing tokens to the transaction
-          * @param in_token_id - a numerical token identifierfor the incoming asset
-          * @param in_amount - the incoming amount (quantity, symbol) 
           * @param recipient - the account receiving tokens from the transaction
+          * @param in_token_id - a numerical token identifierfor the incoming asset
           * @param out_token_id - a numerical token identifier for the outgoing asset
-          * @param out_amount - the outgoing amount (quantity, symbol)
-          * @param mods - a simple json object
+          * @param in_amount - the incoming amount (quantity, symbol) 
           * @param memo
           *
-          * @result a vector of 4 uint64_t elements
-          *     rv[0] - a nonce identifying this transaction
-          *     rv[1] - the quantity of incoming tokens assessed as fee
-          *     rv[2] - the quantity of outgoing tokens assessed as fee
-          *     rv[3] - the computed quantity field of the non-controlling asset
           *
       */
-      [[eosio::action]] std::vector<int64_t> exchangeprep(
-           name sender, uint64_t in_token_id, string in_amount,
-           name recipient, uint64_t out_token_id, string out_amount,
-           string mods, string memo);
+      ACTION exprepfrom(
+           name sender, name recipient, uint64_t in_token_id, uint64_t out_token_id,
+           string in_amount, string memo);
+
+      /**
+          * In the `exprepto` action call, the outgoing amount is specified and the incoming
+          *   amount is to be computed by the contract.
+          * 
+          * @param sender - the account sourcing tokens to the transaction
+          * @param recipient - the account receiving tokens from the transaction
+          * @param in_token_id - a numerical token identifierfor the incoming asset
+          * @param out_token_id - a numerical token identifier for the outgoing asset
+          * @param out_amount - the outgoing amount (quantity, symbol)
+          * @param memo
+          *
+      */
+      ACTION exprepto(
+           name sender, name recipient, uint64_t in_token_id, uint64_t out_token_id,
+           string out_amount, string memo);
+
            
       /**
-          * Allows `from` account to transfer to `to` account the `quantity` tokens.
-          * One account is debited and the other is credited with quantity tokens.
+          * Allows `from` account to transfer to `to` account the `quantity` tokens
+          * issued under this contract (e.g. LIQxx tokens). One account is debited and
+          * the other is credited with quantity tokens.
           *
           * @param from - the account to transfer from,
           * @param to - the account to be transferred to,
@@ -230,11 +260,12 @@ CONTRACT oswaps : public contract {
           * or from the oswaps contract. (The call is initiated by the 
           * `require-recipient` function in the token contract.)
           *
-          * This action examines the memo field to identify a pending liquidity or
-          * exchange event and executes it. If there is no valid pending event
-          * matching the transfer, the transfer is blocked.
-          * As a special case, using the magic memo code (42) allows a token
-          * transfer into the contract without a pending event.
+          * This action inspects the transaction in which the transfer action
+          *   was embedded. There should be an immediately preceding action
+          *   specifying the intended consequence of this token transfer
+          *   (e.g. add liquidity, swap, ...)
+          * If no recognized action preceded the transfer, the token is
+          *   transferred into the contract account's balance.
           *
           * @param from - token sender
           * @param to - token recipient
@@ -244,7 +275,45 @@ CONTRACT oswaps : public contract {
       [[eosio::on_notify("*::transfer")]]
       void ontransfer(name from, name to, eosio::asset quantity, string memo);
 
-      
+    
+
+    
+    struct addliqprep_params {
+      name account;
+      uint64_t token_id;
+      string amount;
+      float weight;
+      EOSLIB_SERIALIZE( addliqprep_params, (account)(token_id)(amount)(weight) )
+    };
+    struct exprepfrom_params {
+      name sender;
+      name recipient;
+      uint64_t in_token_id;
+      uint64_t out_token_id;
+      string in_amount;
+      string memo;
+      EOSLIB_SERIALIZE( exprepfrom_params,
+        (sender)(recipient)(in_token_id)(out_token_id)(in_amount)(memo) )
+    };
+    struct exprepto_params {
+      name sender;
+      name recipient;
+      uint64_t in_token_id;
+      uint64_t out_token_id;
+      string out_amount;
+      string memo;
+      EOSLIB_SERIALIZE( exprepto_params,
+        (sender)(recipient)(in_token_id)(out_token_id)(out_amount)(memo) )
+
+    };
+    struct transfer_params {
+      name from;
+      name to;
+      asset quantity;
+      string memo;
+      EOSLIB_SERIALIZE( transfer_params, (from)(to)(quantity)(memo) )
+    };
+
   private:
 
       /********** standard token-contract tables ***********/
@@ -266,10 +335,9 @@ CONTRACT oswaps : public contract {
       // config
       TABLE config { // singleton, scoped by contract account name
         name manager;
-        uint64_t nonce_life_msec;
         checksum256 chain_id;
         uint64_t last_token_id;
-        uint32_t last_nonce;
+        bool withdraw_flag;
       } config_row;
 
       // types of antelope tokens
@@ -286,53 +354,23 @@ CONTRACT oswaps : public contract {
         checksum256 by_chain() const { return chain_code; }
       };
      
-     // prepped liquidity additions
-     TABLE adprep { // single table, scoped by contract account name
-       uint64_t nonce;
-       time_point expires;
-       name account;
-       uint64_t token_id;
-       string amount;
-       float weight;
-       
-       uint64_t primary_key() const { return nonce; }
-       uint64_t by_expiration() const { return expires.elapsed._count; }
-     };
+      // for transient storage of prep action for immediately following transfer
+      TABLE txtemp { // singleton, scoped by contract account name
+        std::string txdata;
 
-     // prepped exchanges
-     TABLE exprep { // single table, scoped by contract account name
-       uint64_t nonce;
-       time_point expires;
-       name sender;
-       uint64_t in_token_id;
-       string in_amount;
-       name recipient;
-       uint64_t out_token_id;
-       string out_amount;
-       string mods;
-       string memo;
-       
-       uint64_t primary_key() const { return nonce; }
-       uint64_t by_expiration() const { return expires.elapsed._count; }
-     };
-       
+        //uint64_t primary_key() const { return 0; } // single row
+      };
+
       typedef eosio::singleton< "configs"_n, config > configs;
-      typedef eosio::multi_index< "configs"_n, config >  dump_for_config;
       typedef eosio::multi_index<"assetsa"_n, assettypea, indexed_by
                < "bychain"_n,
                  const_mem_fun<assettypea, checksum256, &assettypea::by_chain > >
                > assetsa;
-      typedef eosio::multi_index<"adpreps"_n, adprep, indexed_by
-               < "byexpiration"_n,
-                 const_mem_fun<adprep, uint64_t, &adprep::by_expiration > >
-               > adpreps;
-      typedef eosio::multi_index<"expreps"_n, exprep, indexed_by
-               < "byexpiration"_n,
-                 const_mem_fun<exprep, uint64_t, &exprep::by_expiration > >
-               > expreps;
+      typedef eosio::singleton< "tx"_n, txtemp >  txx;
 
       void sub_balance( const name& owner, const asset& value );
       void add_balance( const name& owner, const asset& value, const name& ram_payer );
+      void save_transaction(name entry, uint64_t token_id);
 };
 
 

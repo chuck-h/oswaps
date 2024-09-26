@@ -6,25 +6,25 @@ A design paper is located at https://docs.google.com/document/d/1oHhCGfU-CEjdKmq
 
 ## Status
 
-**Under development**.
+Under development. This contract is currently a proof-of-concept for the swapping functions. It does not implement important features from the design paper such as swap fees, authorizations for weight changes and liquidity withdrawal, and liquidity movement rate controls.
 
-As of 5/2024 current development is in the `rev2` branch, which has breaking changes to the contract API. 
+Development and testing is being migrated to https://github.com/nsjames/fuckyea
+
+
 A proof-of-concept web interface for swaps in under development at https://github.com/chuck-h/oswapweb .
-
-With `rev2` development and testing is being migrated to https://github.com/nsjames/fuckyea
 
 # Setup
 
 ### Note
 
-Refer to https://github.com/nsjames/fuckyea/blob/main/README.md for use of the new development platform in `rev2`.
+Refer to https://github.com/nsjames/fuckyea/blob/main/README.md for use of the new development platform .
 ![image](https://github.com/chuck-h/oswaps-smart-contracts/assets/2141014/99a0fb7d-d0d2-4482-9b82-09e46bb7024b)
 
 The description below refers to an earlier development platform which is deprecated.
 
 The development scripts were ported from https://github.com/JoinSEEDS/seeds-smart-contracts and may not function well.
 
-### Environment
+### Environment (deprecated)
 
 The .env file contains the all-important keys for local, testnet, and potentially mainnet
 
