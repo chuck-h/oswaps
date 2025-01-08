@@ -13,7 +13,7 @@ Development and testing is being migrated to https://github.com/nsjames/fuckyea
 
 A proof-of-concept web interface for swaps in under development at https://github.com/chuck-h/oswapweb .
 
-# Setup
+# Build
 
 ### Note
 
@@ -22,15 +22,31 @@ Refer to https://github.com/nsjames/fuckyea/blob/main/README.md for use of the n
 
 # Install
 
-The compiled contract takes about 840kB of RAM. Additional table RAM will be required for each token. 
+The compiled contract takes about 840kB of RAM. Additional table RAM will be required for each token asset. 
 
 The contract `active` auth must include `<contract>@eosio.code`
 
 # Initialize
 
-Call the `init` action to set the blockchain ID and a manager account
+Call the `init` action to set the manager account and blockchain name ("Telos").
 
-# Setup (old)
+## Add a currency token (asset)
+
+Call `createasseta` to create a pool table entry. The contract supports only Telos chain assets. Consider using the "Rainbow Token" contract (ref https://cc42.xyz/rainbo/manage.html) if your application requires more flexibility than the basic `eosio.token` contract provides.
+
+Call `unfreeze` on the new asset.
+
+Add liquidity for the new asset. Use a `weight` parameter to set the initial exchange rate against existing token assets. (Use an arbitrary weight of 1.0 for the very first asset.) Add liquidity using a two-action transaction; the first action is `addliqprep` and the second action is a `transfer` to the contract account.
+
+Call `unfreeze` again to allow further transactions.
+
+## Web interface
+A basic web interface is here https://cc42.xyz/oswap/oswap.html
+
+## Mobile wallet integration
+Developmental work on wallet integration is here https://github.com/JoinSEEDS/seeds_light_wallet/tree/rainbow_upgrade .
+
+# Build (old)
 The description below refers to an earlier development platform which is deprecated.
 
 The development scripts were ported from https://github.com/JoinSEEDS/seeds-smart-contracts and may not function well.
