@@ -20,6 +20,17 @@ A proof-of-concept web interface for swaps in under development at https://githu
 Refer to https://github.com/nsjames/fuckyea/blob/main/README.md for use of the new development platform .
 ![image](https://github.com/chuck-h/oswaps-smart-contracts/assets/2141014/99a0fb7d-d0d2-4482-9b82-09e46bb7024b)
 
+# Install
+
+The compiled contract takes about 840kB of RAM. Additional table RAM will be required for each token. 
+
+The contract `active` auth must include `<contract>@eosio.code`
+
+# Initialize
+
+Call the `init` action to set the blockchain ID and a manager account
+
+# Setup (old)
 The description below refers to an earlier development platform which is deprecated.
 
 The development scripts were ported from https://github.com/JoinSEEDS/seeds-smart-contracts and may not function well.
